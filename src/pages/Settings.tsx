@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { CATEGORIES, db, type Grade } from '../db/database'
+import { CATEGORIES, db, type CareerState, type Grade } from '../db/database'
+import MyPlanSettings from '../components/MyPlanSettings'
 import { GRADE_OPTIONS, IN_PROGRESS } from '../utils/gpa'
 
 const SEMESTERS: Grade['semester'][] = ['1학기', '2학기', '여름학기', '겨울학기']
@@ -39,6 +40,28 @@ function toGrade(raw: unknown): Grade | null {
   }
 }
 
+// 백업 파일의 내 계획(진로·수강 계획). 형식이 맞을 때만 가져옴
+function toCareer(raw: unknown): CareerState | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const r = raw as Partial<CareerState>
+  if (!Array.isArray(r.plan) || !Array.isArray(r.manualSkills)) return null
+  const plan = r.plan.filter(
+    (p) =>
+      typeof p?.courseName === 'string' &&
+      typeof p.level === 'number' &&
+      (p.semester === '1학기' || p.semester === '2학기'),
+  )
+  return {
+    key: 'career',
+    targetJobId: typeof r.targetJobId === 'string' ? r.targetJobId : null,
+    manualSkills: r.manualSkills.filter((s) => typeof s === 'string'),
+    plan,
+    freeTrackCase: typeof r.freeTrackCase === 'string' ? r.freeTrackCase : null,
+    extraSemesters: typeof r.extraSemesters === 'number' ? r.extraSemesters : 0,
+    shiftExcess: r.shiftExcess === true,
+  }
+}
+
 function Settings() {
   const [count, setCount] = useState(0)
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(
@@ -52,15 +75,18 @@ function Settings() {
 
   const handleExport = async () => {
     const grades = await db.grades.toArray()
+    const career = await db.career.get('career')
     const data = {
       app: 'GradMate',
-      version: 1,
+      version: 2,
       exportedAt: new Date().toISOString(),
       grades: grades.map((g) => {
         const copy = { ...g }
         delete copy.id
         return copy
       }),
+      // 내 계획(자유선택 과정, 추가학기, 희망 직무, 수강 계획)
+      career: career ?? null,
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: 'application/json',
@@ -109,13 +135,21 @@ function Settings() {
         return
       }
 
-      await db.transaction('rw', db.grades, async () => {
+      const career = Array.isArray(parsed) ? null : toCareer((parsed as { career?: unknown }).career)
+
+      await db.transaction('rw', db.grades, db.career, async () => {
         await db.grades.clear()
         await db.grades.bulkAdd(grades as Grade[])
+        if (career) await db.career.put(career)
       })
 
       setCount(grades.length)
-      setMessage({ type: 'ok', text: `과목 ${grades.length}개를 가져왔습니다.` })
+      setMessage({
+        type: 'ok',
+        text: career
+          ? `과목 ${grades.length}개와 내 계획을 가져왔습니다.`
+          : `과목 ${grades.length}개를 가져왔습니다.`,
+      })
     } catch {
       setMessage({ type: 'error', text: 'JSON 파일을 읽을 수 없습니다.' })
     }
@@ -126,8 +160,10 @@ function Settings() {
       <header>
         <p className="text-sm font-medium text-violet-600">GRADMATE</p>
         <h1 className="mt-2 text-3xl font-bold">설정</h1>
-        <p className="mt-2 text-gray-500">데이터를 백업하고 복원해 보세요.</p>
+        <p className="mt-2 text-gray-500">내 계획을 정하고 데이터를 백업해 보세요.</p>
       </header>
+
+      <MyPlanSettings />
 
       <section className="rounded-2xl border border-gray-200 bg-white p-6">
         <h2 className="text-lg font-bold">데이터 관리</h2>
@@ -140,7 +176,7 @@ function Settings() {
             <div>
               <p className="text-sm font-medium text-gray-900">내보내기</p>
               <p className="mt-1 text-sm text-gray-500">
-                모든 과목을 JSON 파일로 저장합니다.
+                모든 과목과 내 계획을 JSON 파일로 저장합니다.
               </p>
             </div>
             <button

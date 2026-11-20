@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import GpaChart from '../components/GpaChart'
 import { db, type Grade } from '../db/database'
 import { Link } from 'react-router-dom'
-import { FREE_TRACK_CASES, getFreeTrackCase } from '../data/requirements'
+import { getFreeTrackCase } from '../data/requirements'
+import PlanSummary from '../components/PlanSummary'
 import { MAJOR_SELECTION } from '../data/career'
 import {
   calcGroupStatuses,
@@ -11,7 +12,6 @@ import {
   calcTotalProgress,
   loadCareer,
   remainingSemesters,
-  saveCareerFields,
 } from '../utils/graduation'
 import {
   GRADE_POINTS,
@@ -55,16 +55,8 @@ const Dashboard = () => {
     })
   }, [])
 
-  // 자유선택 과정·추가학기: 여기서 고르면 졸업 요건·진로 관리에 함께 적용
+  // 설정의 「내 계획」에서 고른 자유선택 과정·추가학기 기준
   const selectedCase = getFreeTrackCase(trackCase)
-  const pickTrackCase = (id: string) => {
-    setTrackCase(id)
-    saveCareerFields({ freeTrackCase: id })
-  }
-  const pickExtra = (n: number) => {
-    setExtra(n)
-    saveCareerFields({ extraSemesters: n })
-  }
 
   const gpa = calcGpa(grades)
   const gpaCredits = grades
@@ -112,9 +104,11 @@ const Dashboard = () => {
         </p>
       </header>
 
+      <PlanSummary />
+
       {applyNotice && (
         <Link
-          to="/career?tab=track"
+          to="/graduation"
           className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-medium text-violet-700 transition hover:bg-violet-100"
         >
           <span>{applyNotice}</span>
@@ -234,42 +228,7 @@ const Dashboard = () => {
           )}
         </p>
 
-        <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-6">
-          <span className="mr-2 text-sm font-medium text-gray-700">자유선택 과정</span>
-          {FREE_TRACK_CASES.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => pickTrackCase(c.id)}
-              className={`h-8 rounded-full border px-3.5 text-sm font-medium transition ${
-                selectedCase.id === c.id
-                  ? 'border-violet-300 bg-violet-50 text-violet-700'
-                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="mr-2 text-sm font-medium text-gray-700">추가학기</span>
-          {[0, 1, 2].map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => pickExtra(n)}
-              className={`h-8 rounded-full border px-3.5 text-sm font-medium transition ${
-                extra === n
-                  ? 'border-violet-300 bg-violet-50 text-violet-700'
-                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
-              }`}
-            >
-              {n === 0 ? '없음' : `${n}학기`}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-6 space-y-5">
+        <div className="mt-8 space-y-5">
           {groupProgress.map((group) => (
             <div key={group.name}>
               <div className="mb-2 flex justify-between text-sm">

@@ -60,10 +60,20 @@ export function calcTotalProgress(grades: Grade[]) {
 }
 
 /** 진로·졸업 설정 (자유선택 과정, 추가학기 등). 진로 관리 상태와 같은 곳에 저장 */
-export const loadCareer = () => db.career.get('career')
+// 예전 버전에서 일부 항목만 저장된 경우에도 빈 값으로 채워서 돌려줘요
+export const loadCareer = async (): Promise<CareerState | undefined> => {
+  const saved = await db.career.get('career')
+  if (!saved) return undefined
+  return {
+    ...saved,
+    targetJobId: saved.targetJobId ?? null,
+    manualSkills: Array.isArray(saved.manualSkills) ? saved.manualSkills : [],
+    plan: Array.isArray(saved.plan) ? saved.plan : [],
+  }
+}
 
 export async function saveCareerFields(fields: Partial<Omit<CareerState, 'key'>>) {
-  const saved = await db.career.get('career')
+  const saved = await loadCareer()
   await db.career.put({
     ...(saved ?? { key: 'career', targetJobId: null, manualSkills: [], plan: [] }),
     ...fields,
@@ -119,7 +129,8 @@ export function calcGroupStatuses(grades: Grade[], caseId: string | null | undef
 }
 
 /** 영역 기준을 모두 채우려면 더 들어야 하는 학점 (못 들은 필수 과목 포함, 졸업 학점 130 이상) */
-export function calcRemainingCredits(
+/** 영역 기준(필수 과목 포함)만 채우는 데 더 필요한 학점 */
+export function calcAreaRemaining(
   grades: Grade[],
   groups: { items: RequirementStatus[] }[],
 ) {
@@ -130,8 +141,15 @@ export function calcRemainingCredits(
     .filter((c) => !c.done && !c.inProgress)
     .filter((c) => items.some((i) => i.categories.includes(c.category) && i.remaining === 0))
     .length * 3
+  return areaRemaining + requiredExtra
+}
+
+export function calcRemainingCredits(
+  grades: Grade[],
+  groups: { items: RequirementStatus[] }[],
+) {
   const earned = calcEarnedCredits(grades)
-  return Math.max(areaRemaining + requiredExtra, REQUIREMENTS.totalCredits - earned)
+  return Math.max(calcAreaRemaining(grades, groups), REQUIREMENTS.totalCredits - earned)
 }
 
 /** 남은 정규학기 수 (4학년 2학기 + 추가학기까지, 지금까지 다닌 학기 수 기준) */

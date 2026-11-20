@@ -290,7 +290,7 @@ function Grades() {
                   </div>
 
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                    <table className="w-full min-w-[520px] text-left text-sm">
                       <thead className="border-b border-gray-200 text-gray-500">
                         <tr>
                           <th className="p-3">영역</th>

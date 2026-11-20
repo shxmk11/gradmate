@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import PlanSummary from '../components/PlanSummary'
+import { MAJOR_SELECTION } from '../data/career'
 import { db, type PlannedCourse, type Grade } from '../db/database'
 import { calcPlannedCredits } from '../utils/career'
 import {
@@ -9,15 +11,16 @@ import {
 } from '../data/requirements'
 import { IN_PROGRESS, calcGpa, earnedGrades, inProgressGrades } from '../utils/gpa'
 import {
+  calcAreaRemaining,
   calcExcessMajorCredits,
   calcGroupStatuses,
   calcRemainingCredits,
   calcRequiredCourses,
   calcTotalProgress,
   countRegularSemesters,
+  loadCareer,
   normalize,
   remainingSemesters,
-  saveCareerFields,
 } from '../utils/graduation'
 
 // planned: 수강 계획까지 들었을 때의 예상 진행률 (연한 색으로 이어서 표시)
@@ -57,7 +60,7 @@ function Graduation() {
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
-    db.career.get('career').then((saved) => {
+    loadCareer().then((saved) => {
       if (!saved) return
       setPlan(saved.plan)
       setTrackCase(saved.freeTrackCase ?? null)
@@ -66,18 +69,14 @@ function Graduation() {
     })
   }, [])
 
-  const toggleShift = () => {
-    setShift(!shift)
-    saveCareerFields({ shiftExcess: !shift })
-  }
-
   const groupStatuses = calcGroupStatuses(grades, trackCase, shift)
   const remaining = calcRemainingCredits(grades, groupStatuses)
+  const areaRemaining = calcAreaRemaining(grades, groupStatuses)
   const semestersLeft = remainingSemesters(grades, extra)
   const excess = calcExcessMajorCredits(grades)
   const canShift = getFreeTrackCase(trackCase).tracks.includes('ce') && excess > 0
 
-  // 대시보드에서 고른 자유선택 과정 (안 골랐으면 전공심화)
+  // 설정에서 고른 자유선택 과정
   const selectedCase = getFreeTrackCase(trackCase)
   // 이름이 같은 과목을 들었는지 (F 제외, 수강 중 포함)
   const takenStatus = new Map(
@@ -94,6 +93,17 @@ function Graduation() {
   const missingCourses = requiredCourses.filter((c) => !c.done)
   const planned = calcPlannedCredits(plan, grades)
   const remainingWithPlan = Math.max(total.remaining - planned.total, 0)
+  // 영역별 기준 합계와, 영역 기준만 채웠을 때 졸업 학점
+  const groupSums = groupStatuses.map((g) => ({
+    name: g.name,
+    total: g.items.reduce((sum, i) => sum + i.credits, 0),
+    counted: g.items.reduce((sum, i) => sum + Math.min(i.earned, i.credits), 0),
+  }))
+  const areaTotal = groupSums.reduce((sum, g) => sum + g.total, 0)
+  const areaCounted = groupSums.reduce((sum, g) => sum + g.counted, 0)
+  const outsideCredits = Math.max(total.earned - areaCounted, 0)
+  const projectedTotal = total.earned + areaRemaining
+  const overTotal = projectedTotal - total.total
   const inProgress = inProgressGrades(grades)
   const inProgressCredits = inProgress.reduce((sum, g) => sum + g.credits, 0)
   const inProgressOf = (categories: readonly string[]) =>
@@ -151,7 +161,7 @@ function Graduation() {
           )}
         </div>
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[560px] text-left text-sm">
             <thead className="border-b border-gray-200 text-xs text-gray-500">
               <tr>
                 <th className="w-24 p-2 font-medium" />
@@ -202,6 +212,8 @@ function Graduation() {
         <h1 className="mt-2 text-3xl font-bold">졸업 요건</h1>
         <p className="mt-2 text-gray-500">{REQUIREMENTS.title} 기준</p>
       </header>
+
+      <PlanSummary />
 
       {/* 전체 진행률 */}
       <section className="rounded-2xl border border-gray-200 bg-white p-6">
@@ -266,21 +278,10 @@ function Graduation() {
         <p className="mt-1 text-sm text-gray-500">
           각 영역의 기준 학점을 모두 채워야 졸업할 수 있어요.
         </p>
-        {canShift && (
-          <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600">
-            <input
-              type="checkbox"
-              checked={shift}
-              onChange={toggleShift}
-              className="mt-0.5 h-4 w-4 accent-violet-600"
-            />
-            <span>
-              주전공 기준을 넘긴 <span className="font-medium text-gray-900">{excess}학점</span>을 컴공 복수전공으로 옮겨 보기
-              <span className="mt-0.5 block text-xs text-gray-400">
-                컴공 전공인정 과목이면 복수전공 합격 후 이수구분변경신청으로 옮길 수 있다는 가정이에요. 실제 인정 여부는 전공인정과목조회로 확인해 주세요.
-              </span>
-            </span>
-          </label>
+        {shift && canShift && (
+          <p className="mt-3 text-xs text-violet-600">
+            주전공 기준을 넘긴 {excess}학점을 컴공 복수전공으로 옮겨서 계산하고 있어요. 설정의 「내 계획」에서 끌 수 있어요.
+          </p>
         )}
 
         <div className="mt-6 space-y-8">
@@ -381,6 +382,51 @@ function Graduation() {
             )
           })}
         </div>
+
+        {/* 영역 합계와 졸업 학점 예상 */}
+        <div className="mt-8 rounded-xl bg-gray-50 p-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-bold text-gray-900">총 학점</h3>
+            <span className="text-sm text-gray-500">
+              영역 기준 합계{' '}
+              <span className="font-medium text-gray-900">{areaTotal}학점</span>
+            </span>
+          </div>
+          <ul className="mt-3 divide-y divide-gray-200 text-sm">
+            {groupSums.map((g) => (
+              <li key={g.name} className="flex items-center justify-between gap-4 py-2">
+                <span className="text-gray-600">{g.name}</span>
+                <span className="text-gray-500">
+                  {g.counted} / {g.total}학점
+                </span>
+              </li>
+            ))}
+            <li className="flex items-center justify-between gap-4 py-2">
+              <span className="text-gray-600">영역 기준을 넘긴 학점 · 일반선택</span>
+              <span className="text-gray-500">{outsideCredits}학점</span>
+            </li>
+            <li className="flex items-center justify-between gap-4 py-2 font-medium">
+              <span className="text-gray-900">지금까지 이수</span>
+              <span className="text-gray-900">
+                {total.earned} / {total.total}학점
+              </span>
+            </li>
+          </ul>
+          <p className="mt-4 text-sm text-gray-600">
+            이대로 영역 기준만 딱 채우면 앞으로{' '}
+            <span className="font-medium text-gray-900">{areaRemaining}학점</span>을 더 들어서
+            졸업 때 약{' '}
+            <span className="font-medium text-violet-700">{projectedTotal}학점</span>이 돼요.{' '}
+            {overTotal > 0
+              ? `졸업 기준 ${total.total}학점보다 ${overTotal}학점 많아요.`
+              : overTotal < 0
+                ? `졸업 기준 ${total.total}학점까지 ${-overTotal}학점은 아무 과목으로나 더 채우면 돼요.`
+                : `졸업 기준 ${total.total}학점과 딱 맞아요.`}
+          </p>
+          <p className="mt-1 text-xs text-gray-400">
+            필수 과목이 남은 영역은 과목당 3학점으로 가정했어요. 수강 중인 과목은 이수한 것으로 셌어요.
+          </p>
+        </div>
       </section>
 
       {/* 자유선택 과정 */}
@@ -389,10 +435,10 @@ function Graduation() {
           <div>
             <h2 className="text-lg font-bold text-gray-900">자유선택 과정</h2>
             <p className="mt-1 text-sm text-gray-500">
-              <Link to="/" className="font-medium text-violet-600 hover:underline">
-                대시보드
+              <Link to="/settings" className="font-medium text-violet-600 hover:underline">
+                내 계획
               </Link>
-              에서 고른 과정의 요건이에요. 영역별 이수 현황의 「자유선택」에도 반영돼요.
+              에서 고른 과정의 이수 기준, 신청 안내, 개설 과목이에요. 이수 학점은 위 「자유선택」에 있어요.
             </p>
           </div>
           <StatusBadge done={false} label={selectedCase.label} />
@@ -400,6 +446,41 @@ function Graduation() {
 
         <div className="mt-6">
           {renderTrackPlan(selectedCase.plan)}
+          {selectedCase.tracks.includes('ce') && (
+            <details className="mt-6 rounded-xl bg-gray-50 px-4 py-3">
+              <summary className="cursor-pointer text-sm font-medium text-gray-700">
+                {MAJOR_SELECTION.title} 안내 · 여석
+              </summary>
+              <p className="mt-3 text-sm text-gray-500">{MAJOR_SELECTION.rule}</p>
+              <ul className="mt-3 space-y-1 text-sm text-gray-600">
+                <li>
+                  <span className="text-gray-500">신청 · </span>
+                  {MAJOR_SELECTION.period}
+                </li>
+                <li>
+                  <span className="text-gray-500">발표 · </span>
+                  {MAJOR_SELECTION.announce}
+                </li>
+                <li>
+                  <span className="text-gray-500">방법 · </span>
+                  {MAJOR_SELECTION.how}
+                </li>
+              </ul>
+              <p className="mt-4 mb-1 text-sm font-medium text-gray-900">2025학번 여석</p>
+              <ul className="divide-y divide-gray-100 text-sm">
+                {MAJOR_SELECTION.seats2025.map((seat) => (
+                  <li key={seat.name} className="flex justify-between py-2">
+                    <span className={seat.name === '컴퓨터공학과' ? 'font-medium text-violet-700' : 'text-gray-700'}>
+                      {seat.name}
+                    </span>
+                    <span className={seat.seats === 0 ? 'text-gray-400' : 'text-gray-900'}>
+                      {seat.seats}명
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       </section>
 
