@@ -107,3 +107,23 @@ export function calcCreditsByCategory(
 
 /** 학점을 취득한 과목만 (F 제외) */
 export const earnedGrades = (grades: Grade[]) => grades.filter(isEarned)
+
+/**
+ * 목표 평점을 맞추려면 앞으로 들을 학점에서 평균 몇 점이 필요한지.
+ * 지금까지 평점 대상 학점·점수에 앞으로 들을 학점을 더해서 계산 (P 과목은 계산에서 빠짐).
+ */
+export function calcRequiredAverage(grades: Grade[], target: number, futureCredits: number) {
+  const targets = grades.filter(isGpaCourse)
+  const credits = targets.reduce((sum, g) => sum + g.credits, 0)
+  const points = targets.reduce((sum, g) => sum + GRADE_POINTS[g.grade] * g.credits, 0)
+  if (futureCredits <= 0) return null
+  return (target * (credits + futureCredits) - points) / futureCredits
+}
+
+/** 평균 점수에 가장 가까운 성적 (그 점수 이상인 가장 낮은 등급) */
+export function gradeAtLeast(average: number) {
+  const entries = Object.entries(GRADE_POINTS)
+    .filter(([, p]) => p > 0)
+    .sort((a, b) => a[1] - b[1])
+  return entries.find(([, p]) => p >= average - 1e-9)?.[0] ?? null
+}

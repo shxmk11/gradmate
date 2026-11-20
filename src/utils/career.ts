@@ -1,4 +1,4 @@
-import type { Grade, PlannedCourse } from '../db/database'
+import type { Category, Grade, PlannedCourse } from '../db/database'
 import {
   COURSES,
   SKILLS,
@@ -221,4 +221,27 @@ export function buildCounselPrompt(p: PromptInput) {
     '4. 수업 외에 준비하면 좋은 프로젝트, 자격증, 대외활동을 알려 주세요.',
   )
   return lines.join('\n')
+}
+
+/** 로드맵 영역 → 졸업 요건 영역 (트랙 과목·타 학과는 영역을 알 수 없어서 전체 학점에만 반영) */
+const GROUP_CATEGORY: Record<string, Category> = {
+  교양필수: '공통교양',
+  '1영역': '핵심전공',
+  '2영역': '핵심전공',
+  '3영역': '심화전공',
+  '4영역': '심화전공',
+}
+
+/** 아직 안 들은 계획 과목의 예상 학점 (과목당 3학점으로 가정) */
+export function calcPlannedCredits(plan: PlannedCourse[], grades: Grade[]) {
+  const taken = takenCourseNames(grades)
+  const courses = plan
+    .filter((p) => !taken.has(normalize(p.courseName)))
+    .map((p) => {
+      const course = COURSES.find((c) => normalize(c.name) === normalize(p.courseName))
+      return { name: p.courseName, credits: 3, category: course ? GROUP_CATEGORY[course.group] : undefined }
+    })
+  const byCategory: Partial<Record<Category, number>> = {}
+  for (const c of courses) if (c.category) byCategory[c.category] = (byCategory[c.category] ?? 0) + c.credits
+  return { courses, total: courses.reduce((sum, c) => sum + c.credits, 0), byCategory }
 }

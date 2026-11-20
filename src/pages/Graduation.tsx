@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { db, type Grade } from '../db/database'
+import { db, type PlannedCourse, type Grade } from '../db/database'
+import { calcPlannedCredits } from '../utils/career'
 import { REQUIREMENTS } from '../data/requirements'
 import { calcGpa } from '../utils/gpa'
 import {
@@ -9,13 +10,18 @@ import {
   countRegularSemesters,
 } from '../utils/graduation'
 
-function ProgressBar({ percent }: { percent: number }) {
+// planned: 수강 계획까지 들었을 때의 예상 진행률 (연한 색으로 이어서 표시)
+function ProgressBar({ percent, planned = 0 }: { percent: number; planned?: number }) {
+  const done = Math.min(percent, 100)
   return (
-    <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-      <div
-        className="h-full rounded-full bg-violet-500"
-        style={{ width: `${Math.min(percent, 100)}%` }}
-      />
+    <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
+      <div className="h-full rounded-full bg-violet-500" style={{ width: `${done}%` }} />
+      {planned > 0 && (
+        <div
+          className="h-full rounded-r-full bg-violet-200"
+          style={{ width: `${Math.min(planned, 100 - done)}%` }}
+        />
+      )}
     </div>
   )
 }
@@ -34,9 +40,11 @@ function StatusBadge({ done, label }: { done: boolean; label?: string }) {
 
 function Graduation() {
   const [grades, setGrades] = useState<Grade[]>([])
+  const [plan, setPlan] = useState<PlannedCourse[]>([])
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
+    db.career.get('career').then((saved) => saved && setPlan(saved.plan))
   }, [])
 
   const total = calcTotalProgress(grades)
@@ -44,6 +52,13 @@ function Graduation() {
   const semesters = countRegularSemesters(grades)
   const requiredCourses = calcRequiredCourses(grades)
   const missingCourses = requiredCourses.filter((c) => !c.done)
+  const planned = calcPlannedCredits(plan, grades)
+  const remainingWithPlan = Math.max(total.remaining - planned.total, 0)
+  const plannedOf = (categories: readonly string[]) =>
+    categories.reduce(
+      (sum, c) => sum + (planned.byCategory[c as keyof typeof planned.byCategory] ?? 0),
+      0,
+    )
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -67,15 +82,34 @@ function Graduation() {
             <span className="mb-1 text-sm text-gray-400">/ {total.total}학점</span>
           </div>
         </div>
-        <div className="mt-6 h-3 overflow-hidden rounded-full bg-gray-100">
+        <div className="mt-6 flex h-3 overflow-hidden rounded-full bg-gray-100">
           <div
             className="h-full rounded-full bg-violet-600"
             style={{ width: `${total.percent}%` }}
           />
+          {planned.total > 0 && (
+            <div
+              className="h-full rounded-r-full bg-violet-200"
+              style={{
+                width: `${Math.min((planned.total / total.total) * 100, 100 - total.percent)}%`,
+              }}
+            />
+          )}
         </div>
-        <p className="mt-3 text-right text-sm font-medium text-violet-600">
-          {total.percent.toFixed(1)}%
-        </p>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="text-gray-500">
+            {planned.total > 0 ? (
+              <>
+                <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-violet-200" />
+                수강 계획 {planned.courses.length}과목(약 {planned.total}학점)을 들으면 졸업까지{' '}
+                {remainingWithPlan}학점 남아요.
+              </>
+            ) : (
+              '진로 관리에서 수강 계획을 담으면 예상 학점이 함께 표시돼요.'
+            )}
+          </span>
+          <span className="font-medium text-violet-600">{total.percent.toFixed(1)}%</span>
+        </div>
       </section>
 
       {/* 영역별 이수 현황 */}
@@ -123,6 +157,11 @@ function Graduation() {
                           </div>
                           <span className="text-gray-500">
                             {item.earned} / {item.credits}학점
+                            {plannedOf(item.categories) > 0 && (
+                              <span className="ml-2 text-violet-500">
+                                (계획 +{plannedOf(item.categories)})
+                              </span>
+                            )}
                             {item.remaining > 0 && (
                               <span className="ml-2 text-gray-400">
                                 ({item.remaining}학점 남음)
@@ -130,7 +169,10 @@ function Graduation() {
                             )}
                           </span>
                         </div>
-                        <ProgressBar percent={(item.earned / item.credits) * 100} />
+                        <ProgressBar
+                          percent={(item.earned / item.credits) * 100}
+                          planned={(plannedOf(item.categories) / item.credits) * 100}
+                        />
                         {(item.note || item.minAreas) && (
                           <p className="mt-2 text-xs text-gray-400">
                             {item.note}

@@ -1,7 +1,8 @@
 
 import { useEffect, useState } from 'react'
 import GpaChart from '../components/GpaChart'
-import { CATEGORIES, db, type Grade } from '../db/database'
+import CareerSummary from '../components/CareerSummary'
+import { CATEGORIES, db, type CareerState, type Grade } from '../db/database'
 import { REQUIREMENTS } from '../data/requirements'
 import { calcRequirementStatus, calcTotalProgress } from '../utils/graduation'
 import {
@@ -15,9 +16,11 @@ import {
 
 const Dashboard = () => {
   const [grades, setGrades] = useState<Grade[]>([])
+  const [career, setCareer] = useState<CareerState | null>(null)
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
+    db.career.get('career').then((saved) => setCareer(saved ?? null))
   }, [])
 
   const gpa = calcGpa(grades)
@@ -186,6 +189,9 @@ const Dashboard = () => {
           ))}
         </div>
       </section>
+
+      {/* Career */}
+      <CareerSummary grades={grades} career={career} />
 
       {/* Credit Categories */}
       <section className="rounded-2xl border border-gray-200 bg-white p-6">

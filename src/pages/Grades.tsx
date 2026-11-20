@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { CATEGORIES, db, type Category, type Grade } from '../db/database'
 import { AREA_OPTIONS } from '../data/requirements'
 import { GRADE_OPTIONS, calcSemesterGpas } from '../utils/gpa'
+import GpaGoal from '../components/GpaGoal'
 
 const fieldClass =
   'block h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal text-gray-900 outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
@@ -252,6 +253,8 @@ function Grades() {
           </div>
         </form>
       </section>
+
+      <GpaGoal grades={grades} />
 
       <section className="rounded-2xl border border-gray-200 bg-white p-6">
         <h2 className="mb-5 text-lg font-bold">
