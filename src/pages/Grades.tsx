@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from 'react'
 import { CATEGORIES, db, type Category, type Grade } from '../db/database'
+import { calcSemesterGpas } from '../utils/gpa'
 
 function Grades() {
   const [grades, setGrades] = useState<Grade[]>([])
@@ -10,6 +11,7 @@ function Grades() {
   const [credits, setCredits] = useState(3)
   const [grade, setGrade] = useState('A+')
   const [category, setCategory] = useState<Category>('공통교양')
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const loadGrades = async () => {
     const data = await db.grades.toArray()
@@ -25,23 +27,51 @@ function Grades() {
 
     if (!courseName.trim()) return
 
-    await db.grades.add({
+    const data = {
       year,
       semester,
       courseName: courseName.trim(),
       credits,
       grade,
       category,
-    })
+    }
+
+    if (editingId !== null) {
+      await db.grades.update(editingId, data)
+      setEditingId(null)
+    } else {
+      await db.grades.add(data)
+    }
 
     setCourseName('')
     await loadGrades()
   }
 
+  const handleEdit = (item: Grade) => {
+    if (item.id === undefined) return
+    setEditingId(item.id)
+    setYear(item.year)
+    setSemester(item.semester)
+    setCourseName(item.courseName)
+    setCredits(item.credits)
+    setGrade(item.grade)
+    setCategory(item.category ?? '공통교양')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setCourseName('')
+  }
+
   const handleDelete = async (id: number) => {
     await db.grades.delete(id)
+    if (id === editingId) handleCancelEdit()
     await loadGrades()
   }
+
+  // 최근 학기가 위로 오도록 정렬
+  const semesters = calcSemesterGpas(grades).reverse()
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -54,7 +84,9 @@ function Grades() {
       </header>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-6">
-        <h2 className="mb-5 text-lg font-bold">과목 등록</h2>
+        <h2 className="mb-5 text-lg font-bold">
+          {editingId !== null ? '과목 수정' : '과목 등록'}
+        </h2>
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-2 text-sm font-medium">
@@ -137,12 +169,23 @@ function Grades() {
             </select>
           </label>
 
-          <button
-            type="submit"
-            className="rounded-lg bg-violet-600 px-5 py-3 font-medium text-white transition hover:bg-violet-700 sm:col-span-2"
-          >
-            과목 등록
-          </button>
+          <div className="flex gap-3 sm:col-span-2">
+            <button
+              type="submit"
+              className="flex-1 rounded-lg bg-violet-600 px-5 py-3 font-medium text-white transition hover:bg-violet-700"
+            >
+              {editingId !== null ? '수정 완료' : '과목 등록'}
+            </button>
+            {editingId !== null && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="rounded-lg border border-gray-200 px-5 py-3 font-medium text-gray-600 transition hover:bg-gray-100"
+              >
+                취소
+              </button>
+            )}
+          </div>
         </form>
       </section>
 
@@ -156,44 +199,87 @@ function Grades() {
             등록된 과목이 없습니다.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-gray-200 text-gray-500">
-                <tr>
-                  <th className="p-3">학기</th>
-                  <th className="p-3">영역</th>
-                  <th className="p-3">과목명</th>
-                  <th className="p-3">학점</th>
-                  <th className="p-3">성적</th>
-                  <th className="p-3">관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grades.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-100">
-                    <td className="p-3 whitespace-nowrap">
-                      {item.year}년 {item.semester}
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      {item.category ?? (
-                        <span className="text-gray-400">미분류</span>
-                      )}
-                    </td>
-                    <td className="p-3">{item.courseName}</td>
-                    <td className="p-3">{item.credits}</td>
-                    <td className="p-3 font-medium">{item.grade}</td>
-                    <td className="p-3">
-                      <button
-                        onClick={() => item.id !== undefined && handleDelete(item.id)}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        삭제
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-8">
+            {semesters.map((sem) => {
+              const items = grades.filter(
+                (g) => g.year === sem.year && g.semester === sem.semester,
+              )
+              const totalCredits = items.reduce((sum, g) => sum + g.credits, 0)
+
+              return (
+                <div key={`${sem.year}-${sem.semester}`}>
+                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="font-bold text-gray-900">
+                      {sem.year}년 {sem.semester}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      학기 평점{' '}
+                      <span className="font-medium text-gray-900">
+                        {sem.gpa !== null ? sem.gpa.toFixed(2) : '-'}
+                      </span>
+                      <span className="mx-2 text-gray-300">·</span>
+                      누적{' '}
+                      <span className="font-medium text-gray-900">
+                        {sem.cumulativeGpa !== null
+                          ? sem.cumulativeGpa.toFixed(2)
+                          : '-'}
+                      </span>
+                      <span className="mx-2 text-gray-300">·</span>
+                      신청 {totalCredits}학점 / 취득 {sem.earnedCredits}학점
+                    </p>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="border-b border-gray-200 text-gray-500">
+                        <tr>
+                          <th className="p-3">영역</th>
+                          <th className="p-3">과목명</th>
+                          <th className="p-3">학점</th>
+                          <th className="p-3">성적</th>
+                          <th className="p-3">관리</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => (
+                          <tr
+                            key={item.id}
+                            className={`border-b border-gray-100 ${
+                              item.id === editingId ? 'bg-violet-50' : ''
+                            }`}
+                          >
+                            <td className="p-3 whitespace-nowrap">
+                              {item.category ?? (
+                                <span className="text-gray-400">미분류</span>
+                              )}
+                            </td>
+                            <td className="p-3">{item.courseName}</td>
+                            <td className="p-3">{item.credits}</td>
+                            <td className="p-3 font-medium">{item.grade}</td>
+                            <td className="p-3 whitespace-nowrap">
+                              <button
+                                onClick={() => handleEdit(item)}
+                                className="mr-3 text-gray-500 hover:text-gray-900"
+                              >
+                                수정
+                              </button>
+                              <button
+                                onClick={() =>
+                                  item.id !== undefined && handleDelete(item.id)
+                                }
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                삭제
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </section>
