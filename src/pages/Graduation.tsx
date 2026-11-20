@@ -5,16 +5,19 @@ import { calcPlannedCredits } from '../utils/career'
 import {
   REQUIREMENTS,
   getFreeTrackCase,
-  requirementGroups,
   type FreeTrackPlan,
 } from '../data/requirements'
 import { IN_PROGRESS, calcGpa, earnedGrades, inProgressGrades } from '../utils/gpa'
 import {
+  calcExcessMajorCredits,
+  calcGroupStatuses,
+  calcRemainingCredits,
   calcRequiredCourses,
-  calcRequirementStatus,
   calcTotalProgress,
   countRegularSemesters,
   normalize,
+  remainingSemesters,
+  saveCareerFields,
 } from '../utils/graduation'
 
 // planned: 수강 계획까지 들었을 때의 예상 진행률 (연한 색으로 이어서 표시)
@@ -49,6 +52,8 @@ function Graduation() {
   const [grades, setGrades] = useState<Grade[]>([])
   const [plan, setPlan] = useState<PlannedCourse[]>([])
   const [trackCase, setTrackCase] = useState<string | null>(null)
+  const [extra, setExtra] = useState(0)
+  const [shift, setShift] = useState(false)
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
@@ -56,8 +61,21 @@ function Graduation() {
       if (!saved) return
       setPlan(saved.plan)
       setTrackCase(saved.freeTrackCase ?? null)
+      setExtra(saved.extraSemesters ?? 0)
+      setShift(saved.shiftExcess ?? false)
     })
   }, [])
+
+  const toggleShift = () => {
+    setShift(!shift)
+    saveCareerFields({ shiftExcess: !shift })
+  }
+
+  const groupStatuses = calcGroupStatuses(grades, trackCase, shift)
+  const remaining = calcRemainingCredits(grades, groupStatuses)
+  const semestersLeft = remainingSemesters(grades, extra)
+  const excess = calcExcessMajorCredits(grades)
+  const canShift = getFreeTrackCase(trackCase).tracks.includes('ce') && excess > 0
 
   // 대시보드에서 고른 자유선택 과정 (안 골랐으면 전공심화)
   const selectedCase = getFreeTrackCase(trackCase)
@@ -194,6 +212,18 @@ function Graduation() {
               졸업까지 {total.remaining}학점 남음
               {inProgressCredits > 0 && ` · 수강 중 ${inProgressCredits}학점 포함`}
             </p>
+            <p className="mt-1 text-sm text-gray-500">
+              영역 기준을 다 채우려면 앞으로{' '}
+              <span className="font-medium text-gray-900">{remaining}학점</span>
+              {semestersLeft > 0 && (
+                <>
+                  {' '}· 남은 {semestersLeft}학기{extra > 0 && `(추가학기 ${extra} 포함)`}면 학기당 약{' '}
+                  <span className="font-medium text-violet-700">
+                    {Math.ceil(remaining / semestersLeft)}학점
+                  </span>
+                </>
+              )}
+            </p>
           </div>
           <div className="flex items-end gap-2">
             <span className="text-4xl font-bold text-gray-900">{total.earned}</span>
@@ -236,12 +266,26 @@ function Graduation() {
         <p className="mt-1 text-sm text-gray-500">
           각 영역의 기준 학점을 모두 채워야 졸업할 수 있어요.
         </p>
+        {canShift && (
+          <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={shift}
+              onChange={toggleShift}
+              className="mt-0.5 h-4 w-4 accent-violet-600"
+            />
+            <span>
+              주전공 기준을 넘긴 <span className="font-medium text-gray-900">{excess}학점</span>을 컴공 복수전공으로 옮겨 보기
+              <span className="mt-0.5 block text-xs text-gray-400">
+                컴공 전공인정 과목이면 복수전공 합격 후 이수구분변경신청으로 옮길 수 있다는 가정이에요. 실제 인정 여부는 전공인정과목조회로 확인해 주세요.
+              </span>
+            </span>
+          </label>
+        )}
 
         <div className="mt-6 space-y-8">
-          {requirementGroups(trackCase).map((group) => {
-            const items = group.items.map((item) =>
-              calcRequirementStatus(grades, item),
-            )
+          {groupStatuses.map((group) => {
+            const items = group.items
             const groupEarned = items.reduce(
               (sum, i) => sum + Math.min(i.earned, i.credits),
               0,
@@ -278,6 +322,11 @@ function Graduation() {
                           </div>
                           <span className="text-gray-500">
                             {item.earned} / {item.credits}학점
+                            {item.shifted ? (
+                              <span className="ml-1 text-violet-500">
+                                ({item.shifted > 0 ? `+${item.shifted}` : item.shifted} 옮김)
+                              </span>
+                            ) : null}
                             {inProgressHere > 0 && (
                               <span className="ml-1 text-gray-400">
                                 (수강 중 {inProgressHere} 포함)

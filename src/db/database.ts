@@ -29,7 +29,8 @@ export interface Grade {
 // 진로 관리 설정 (희망 직무, 직접 체크한 역량, 학기별 수강 계획)
 export interface PlannedCourse {
   courseName: string
-  year: number
+  /** 학년 (1~4, 5 이상은 추가학기). 휴학해도 밀리지 않게 연도 대신 학년으로 저장 */
+  level: number
   semester: '1학기' | '2학기'
 }
 
@@ -40,6 +41,10 @@ export interface CareerState {
   plan: PlannedCourse[]
   // 졸업 요건 화면에서 골라 본 자유선택 과정 (없으면 미정)
   freeTrackCase?: string | null
+  /** 4학년 2학기 뒤에 더 다닐 추가학기 수 */
+  extraSemesters?: number
+  /** 주전공 기준을 넘긴 전공 학점을 컴공 복수전공으로 옮겨 보기 */
+  shiftExcess?: boolean
 }
 
 class GradMateDatabase extends Dexie {
@@ -61,6 +66,29 @@ class GradMateDatabase extends Dexie {
       grades: '++id, year, semester, courseName, category',
       career: 'key',
     })
+
+    // 수강 계획을 연도 대신 학년으로 저장 (입학년도는 가장 이른 성적 연도로 추정)
+    this.version(4)
+      .stores({
+        grades: '++id, year, semester, courseName, category',
+        career: 'key',
+      })
+      .upgrade(async (tx) => {
+        const grades = await tx.table('grades').toArray()
+        const admission = grades.length > 0 ? Math.min(...grades.map((g) => g.year)) : 0
+        await tx
+          .table('career')
+          .toCollection()
+          .modify((state) => {
+            state.plan = (state.plan ?? []).map(
+              (p: { courseName: string; year?: number; level?: number; semester: string }) => ({
+                courseName: p.courseName,
+                level: p.level ?? (admission && p.year ? p.year - admission + 1 : 3),
+                semester: p.semester,
+              }),
+            )
+          })
+      })
   }
 }
 

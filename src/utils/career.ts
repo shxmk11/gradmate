@@ -10,7 +10,7 @@ import {
 } from '../data/career'
 import type { TrackId } from '../data/requirements'
 import { completedGrades, inProgressGrades } from './gpa'
-import { calcRequiredCourses, normalize } from './graduation'
+import { calcRequiredCourses, countRegularSemesters, normalize } from './graduation'
 
 /** 성적까지 받은 과목명 (정규화). 수강 중 과목은 역량·트랙 계산에서 빼요 */
 export const takenCourseNames = (grades: Grade[]) =>
@@ -113,45 +113,28 @@ export function calcTrackStatus(track: Track, grades: Grade[]) {
 }
 
 export interface SemesterSlot {
-  year: number
+  /** 학년 (5 이상은 추가학기) */
+  level: number
   semester: '1학기' | '2학기'
 }
 
-export const slotLabel = (s: SemesterSlot) => `${s.year}-${s.semester === '1학기' ? 1 : 2}학기`
+export const slotLabel = (s: SemesterSlot) =>
+  s.level <= 4
+    ? `${s.level}학년 ${s.semester}`
+    : `추가 ${(s.level - 5) * 2 + (s.semester === '1학기' ? 1 : 2)}학기`
 
 /**
- * 계획을 세울 수 있는 학기: 다음 학기부터 졸업 학기(입학년도 + 3년의 2학기)까지.
- * 입학년도는 가장 이른 성적의 연도로 추정.
+ * 계획을 세울 수 있는 학기: 다음 학기부터 4학년 2학기(+ 추가학기)까지.
+ * 연도가 아니라 지금까지 다닌 정규학기 수로 세서 휴학해도 학년이 밀리지 않아요.
  */
-export function upcomingSemesters(grades: Grade[], now = new Date()): SemesterSlot[] {
-  const year = now.getFullYear()
-  const month = now.getMonth() + 1
-  // 다음에 수강신청할 학기부터: 1~2월은 그해 1학기, 3~8월은 그해 2학기, 9~12월은 다음 해 1학기
-  let current: SemesterSlot =
-    month <= 2
-      ? { year, semester: '1학기' }
-      : month <= 8
-        ? { year, semester: '2학기' }
-        : { year: year + 1, semester: '1학기' }
-  const admission = grades.length > 0 ? Math.min(...grades.map((g) => g.year)) : year
-  const last = Math.max(admission + 3, current.year)
-
+export function upcomingSemesters(grades: Grade[], extraSemesters = 0): SemesterSlot[] {
   const slots: SemesterSlot[] = []
-  while (current.year <= last) {
-    slots.push(current)
-    current =
-      current.semester === '1학기'
-        ? { year: current.year, semester: '2학기' }
-        : { year: current.year + 1, semester: '1학기' }
-  }
+  const done = countRegularSemesters(grades)
+  // 학기를 다 채웠어도 다음 학기 하나는 보여 줌
+  for (let i = done + 1; i <= Math.max(8 + extraSemesters, done + 1); i++)
+    slots.push({ level: Math.ceil(i / 2), semester: i % 2 === 1 ? '1학기' : '2학기' })
   return slots
 }
-
-/** 과목 개설 학기에 맞는 계획 학기 */
-export const slotsForCourse = (course: CareerCourse, slots: SemesterSlot[]) =>
-  slots.filter(
-    (s) => !course.term || course.term === '매학기' || course.term === s.semester,
-  )
 
 export const courseTiming = (course: CareerCourse) => {
   if (!course.year && !course.term) return '개설 시기 확인 필요'
@@ -165,10 +148,10 @@ export const courseTiming = (course: CareerCourse) => {
 export function groupPlan(plan: PlannedCourse[]) {
   const map = new Map<string, { slot: SemesterSlot; courses: string[] }>()
   for (const p of [...plan].sort(
-    (a, b) => a.year - b.year || a.semester.localeCompare(b.semester),
+    (a, b) => a.level - b.level || a.semester.localeCompare(b.semester),
   )) {
     const key = slotLabel(p)
-    if (!map.has(key)) map.set(key, { slot: { year: p.year, semester: p.semester }, courses: [] })
+    if (!map.has(key)) map.set(key, { slot: { level: p.level, semester: p.semester }, courses: [] })
     map.get(key)!.courses.push(p.courseName)
   }
   return [...map.values()]
@@ -243,6 +226,12 @@ const GROUP_CATEGORY: Record<string, Category> = {
   '영상 부전공': '부전공',
 }
 
+/** 과목명으로 영역 추정 (성적 등록 자동 선택용, 트랙 과목은 영역이 정해져 있지 않아 제외) */
+export function courseCategory(name: string): Category | undefined {
+  const course = COURSES.find((c) => normalize(c.name) === normalize(name))
+  return course ? GROUP_CATEGORY[course.group] : undefined
+}
+
 /**
  * 진로 탭 수강 계획 과목의 예상 학점 (과목당 3학점으로 가정).
  * 이미 들었거나 수강 중인 과목은 빼요 (수강 중 과목은 이미 취득 학점에 들어가 있음).
@@ -302,8 +291,8 @@ export function recommendNextSemester(
       .map((c) => normalize(c.name)),
   )
   const owned = new Set(skills.filter((s) => s.owned).map((s) => s.id))
-  const admission = grades.length > 0 ? Math.min(...grades.map((g) => g.year)) : slot.year
-  const studentYear = slot.year - admission + 1
+  // 추가학기는 4학년 과목 기준
+  const studentYear = Math.min(slot.level, 4)
 
   return COURSES.filter(
     (c) =>

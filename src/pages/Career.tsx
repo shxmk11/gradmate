@@ -2,14 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { db, type CareerState, type Grade } from '../db/database'
 import { JOBS, MAJOR_SELECTION, TRACKS, skillName, type SkillId } from '../data/career'
-import {
-  REQUIREMENTS,
-  getFreeTrackCase,
-  requirementGroups,
-  type CreditRequirement,
-} from '../data/requirements'
+import { REQUIREMENTS, getFreeTrackCase } from '../data/requirements'
 import { calcEarnedCredits, calcGpa, completedGrades } from '../utils/gpa'
-import { calcRequiredCourses, calcRequirementStatus } from '../utils/graduation'
+import { calcGroupStatuses, calcRequiredCourses } from '../utils/graduation'
 import {
   buildCounselPrompt,
   calcSkills,
@@ -99,18 +94,18 @@ function Career() {
     freeTrack.tracks.flatMap((t) => j.trackCourses[t] ?? [])
   const skills = useMemo(() => calcSkills(grades, state.manualSkills), [grades, state.manualSkills])
   const owned = (id: SkillId) => skills.find((s) => s.id === id)?.owned ?? false
-  const slots = upcomingSemesters(grades)
+  const slots = upcomingSemesters(grades, state.extraSemesters ?? 0)
   const planned = new Set(state.plan.map((p) => p.courseName))
   // 수강 계획 탭에서 보고 있는 학기 (기본은 다음 학기)
   const sel = slots.find((s) => slotLabel(s) === slotPick) ?? slots[0]
   const selLabel = slotLabel(sel)
   const selCourses = recommendNextSemester(job, skills, grades, sel, freeTrack.tracks)
   const planOf = (slot: SemesterSlot) =>
-    state.plan.filter((p) => p.year === slot.year && p.semester === slot.semester)
+    state.plan.filter((p) => p.level === slot.level && p.semester === slot.semester)
   const selPlan = planOf(sel)
   const selAvailable = selCourses.filter((c) => !planned.has(c.course.name))
-  // 그 학기 학년 (입학년도는 가장 이른 성적 연도로 추정)
-  const selYear = sel.year - (grades.length > 0 ? Math.min(...grades.map((g) => g.year)) : sel.year) + 1
+  // 그 학기 학년 (추가학기는 4학년 과목 기준)
+  const selYear = Math.min(sel.level, 4)
   // 그 학년 과목(권장 학년이 없는 부전공 과목 포함)과 아직 안 들은 졸업 필수 과목만 추천, 나머지는 접기
   const isSuggested = (c: NextCourse) => c.required || c.onTrack || c.course.year === null
   const selSuggest = selAvailable.filter(isSuggested)
@@ -195,9 +190,8 @@ function Career() {
     earned: calcEarnedCredits(grades),
     totalCredits: REQUIREMENTS.totalCredits,
     freeTrack: freeTrack.label,
-    remainingAreas: requirementGroups(state.freeTrackCase)
-      .flatMap((g): CreditRequirement[] => g.items)
-      .map((item) => calcRequirementStatus(grades, item))
+    remainingAreas: calcGroupStatuses(grades, state.freeTrackCase, state.shiftExcess)
+      .flatMap((g) => g.items)
       .filter((s) => s.remaining > 0)
       .map((s) => `${s.label} ${s.remaining}학점`),
     missingRequired: calcRequiredCourses(grades)

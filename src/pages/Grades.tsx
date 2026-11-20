@@ -4,6 +4,8 @@ import { CATEGORIES, db, type Category, type Grade } from '../db/database'
 import { AREA_OPTIONS } from '../data/requirements'
 import { GRADE_OPTIONS, IN_PROGRESS, calcSemesterGpas } from '../utils/gpa'
 import GpaGoal from '../components/GpaGoal'
+import { COURSES } from '../data/career'
+import { courseCategory } from '../utils/career'
 
 const fieldClass =
   'block h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal text-gray-900 outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
@@ -66,6 +68,15 @@ function Grades() {
     setCourseName('')
     setArea('')
     await loadGrades()
+  }
+
+  // 과목명이 아는 과목이면 영역 자동 선택 (컴공·영상 과목은 복수전공·부전공)
+  const handleCourseName = (value: string) => {
+    setCourseName(value)
+    const next = courseCategory(value)
+    if (!next) return
+    setCategory(next)
+    if (!(AREA_OPTIONS[next] ?? []).includes(area)) setArea('')
   }
 
   // 수강 중(성적 비움) 과목에 나중에 성적 입력
@@ -173,11 +184,19 @@ function Grades() {
             <input
               type="text"
               value={courseName}
-              onChange={(e) => setCourseName(e.target.value)}
+              onChange={(e) => handleCourseName(e.target.value)}
               placeholder="과목명을 입력하세요."
               className={fieldClass}
+              list="course-names"
               required
             />
+            <datalist id="course-names">
+              {COURSES.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.group}
+                </option>
+              ))}
+            </datalist>
           </label>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">

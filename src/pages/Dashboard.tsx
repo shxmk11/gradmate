@@ -2,12 +2,16 @@
 import { useEffect, useState } from 'react'
 import GpaChart from '../components/GpaChart'
 import { db, type Grade } from '../db/database'
-import { FREE_TRACK_CASES, getFreeTrackCase, requirementGroups } from '../data/requirements'
+import { Link } from 'react-router-dom'
+import { FREE_TRACK_CASES, getFreeTrackCase } from '../data/requirements'
+import { MAJOR_SELECTION } from '../data/career'
 import {
-  calcRequirementStatus,
+  calcGroupStatuses,
+  calcRemainingCredits,
   calcTotalProgress,
-  loadFreeTrackCase,
-  saveFreeTrackCase,
+  loadCareer,
+  remainingSemesters,
+  saveCareerFields,
 } from '../utils/graduation'
 import {
   GRADE_POINTS,
@@ -18,20 +22,48 @@ import {
   toPercentage,
 } from '../utils/gpa'
 
+const DAY = 86400000
+const dday = (date: string, today: Date) =>
+  Math.ceil((new Date(date).setHours(0, 0, 0, 0) - new Date(today).setHours(0, 0, 0, 0)) / DAY)
+
+// 컴공 복수전공 신청 일정 (신청 전·신청 중·발표 전에만 표시)
+function applyNoticeText(today: Date) {
+  const now = today.getTime()
+  const { applyStart, applyEnd, announceDate, period, announce } = MAJOR_SELECTION
+  if (now < new Date(applyStart).getTime())
+    return `컴공 복수전공 신청까지 D-${dday(applyStart, today)} · ${period}`
+  if (now < new Date(applyEnd).getTime())
+    return `컴공 복수전공 신청 기간이에요 · 마감 D-${dday(applyEnd, today)}`
+  if (now < new Date(announceDate).getTime() + DAY)
+    return `복수전공 합격 발표 D-${dday(announceDate, today)} · ${announce}`
+  return null
+}
+
 const Dashboard = () => {
   const [grades, setGrades] = useState<Grade[]>([])
   const [trackCase, setTrackCase] = useState<string | null>(null)
+  const [extra, setExtra] = useState(0)
+  const [shift, setShift] = useState(false)
+  const [today] = useState(() => new Date())
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
-    loadFreeTrackCase().then(setTrackCase)
+    loadCareer().then((saved) => {
+      setTrackCase(saved?.freeTrackCase ?? null)
+      setExtra(saved?.extraSemesters ?? 0)
+      setShift(saved?.shiftExcess ?? false)
+    })
   }, [])
 
-  // 자유선택 과정: 여기서 고르면 졸업 요건·진로 관리에 함께 적용
+  // 자유선택 과정·추가학기: 여기서 고르면 졸업 요건·진로 관리에 함께 적용
   const selectedCase = getFreeTrackCase(trackCase)
   const pickTrackCase = (id: string) => {
     setTrackCase(id)
-    saveFreeTrackCase(id)
+    saveCareerFields({ freeTrackCase: id })
+  }
+  const pickExtra = (n: number) => {
+    setExtra(n)
+    saveCareerFields({ extraSemesters: n })
   }
 
   const gpa = calcGpa(grades)
@@ -46,14 +78,19 @@ const Dashboard = () => {
   const semesterGpas = calcSemesterGpas(grades.filter((g) => g.grade !== IN_PROGRESS))
 
   const total = calcTotalProgress(grades)
+  const semestersLeft = remainingSemesters(grades, extra)
+  const applyNotice = selectedCase.tracks.includes('ce') ? applyNoticeText(today) : null
 
   // 졸업 요건 그룹(교양, 전공, 자유선택)별 진행률. 영역별 기준을 넘긴 학점은 그룹 진행률에 넣지 않음
-  const groupProgress = requirementGroups(trackCase).map((group) => {
-    const items = group.items.map((item) => calcRequirementStatus(grades, item))
+  const groupStatuses = calcGroupStatuses(grades, trackCase, shift)
+  // 영역 기준을 다 채우려면 더 들어야 하는 학점과 학기당 학점
+  const remaining = calcRemainingCredits(grades, groupStatuses)
+  const perSemester = semestersLeft > 0 ? Math.ceil(remaining / semestersLeft) : null
+  const groupProgress = groupStatuses.map(({ name, items }) => {
     const earned = items.reduce((sum, i) => sum + Math.min(i.earned, i.credits), 0)
     const required = items.reduce((sum, i) => sum + i.credits, 0)
     return {
-      name: group.name,
+      name,
       earned,
       required,
       percent: Math.min((earned / required) * 100, 100),
@@ -74,6 +111,16 @@ const Dashboard = () => {
           나의 학업 현황을 한눈에 확인해 보세요.
         </p>
       </header>
+
+      {applyNotice && (
+        <Link
+          to="/career?tab=track"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-medium text-violet-700 transition hover:bg-violet-100"
+        >
+          <span>{applyNotice}</span>
+          <span className="text-xs text-violet-500">선발 안내 보기 →</span>
+        </Link>
+      )}
 
       {/* Summary Cards */}
       <section className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -176,6 +223,16 @@ const Dashboard = () => {
           </span>
           <span className="text-gray-400">목표 {total.total}학점</span>
         </div>
+        <p className="mt-2 text-sm text-gray-500">
+          영역 기준을 다 채우려면 앞으로{' '}
+          <span className="font-medium text-gray-900">{remaining}학점</span>
+          {perSemester !== null && (
+            <>
+              {' '}· 남은 {semestersLeft}학기면 학기당 약{' '}
+              <span className="font-medium text-violet-700">{perSemester}학점</span>
+            </>
+          )}
+        </p>
 
         <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-6">
           <span className="mr-2 text-sm font-medium text-gray-700">자유선택 과정</span>
@@ -191,6 +248,23 @@ const Dashboard = () => {
               }`}
             >
               {c.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="mr-2 text-sm font-medium text-gray-700">추가학기</span>
+          {[0, 1, 2].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => pickExtra(n)}
+              className={`h-8 rounded-full border px-3.5 text-sm font-medium transition ${
+                extra === n
+                  ? 'border-violet-300 bg-violet-50 text-violet-700'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              {n === 0 ? '없음' : `${n}학기`}
             </button>
           ))}
         </div>
