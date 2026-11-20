@@ -24,8 +24,23 @@ export interface Grade {
   area?: string
 }
 
+// 진로 관리 설정 (희망 직무, 직접 체크한 역량, 학기별 수강 계획)
+export interface PlannedCourse {
+  courseName: string
+  year: number
+  semester: '1학기' | '2학기'
+}
+
+export interface CareerState {
+  key: 'career'
+  targetJobId: string | null
+  manualSkills: string[]
+  plan: PlannedCourse[]
+}
+
 class GradMateDatabase extends Dexie {
   grades!: Table<Grade, number>
+  career!: Table<CareerState, string>
 
   constructor() {
     super('GradMateDB')
@@ -36,6 +51,11 @@ class GradMateDatabase extends Dexie {
 
     this.version(2).stores({
       grades: '++id, year, semester, courseName, category',
+    })
+
+    this.version(3).stores({
+      grades: '++id, year, semester, courseName, category',
+      career: 'key',
     })
   }
 }

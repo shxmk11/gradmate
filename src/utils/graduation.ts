@@ -7,7 +7,7 @@ import {
 import { calcEarnedCredits, earnedGrades } from './gpa'
 
 // 띄어쓰기, 가운뎃점 차이를 무시하고 과목명 비교
-const normalize = (s: string) => s.replace(/[\s·・]/g, '')
+export const normalize = (s: string) => s.replace(/[\s·・]/g, '')
 
 export interface RequirementStatus extends CreditRequirement {
   earned: number
