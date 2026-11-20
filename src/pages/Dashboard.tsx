@@ -1,14 +1,48 @@
 
+import { useEffect, useState } from 'react'
+import GpaChart from '../components/GpaChart'
+import { CATEGORIES, db, type Grade } from '../db/database'
+import {
+  GRADE_POINTS,
+  calcCreditsByCategory,
+  calcEarnedCredits,
+  calcGpa,
+  calcSemesterGpas,
+} from '../utils/gpa'
+
+// 확정된 졸업 기준: 교양 33학점. 총 졸업학점은 아직 미확정.
+const LIBERAL_ARTS_REQUIRED = 33
+const LIBERAL_ARTS_CATEGORIES = ['공통교양', '핵심교양', '진로소양'] as const
+
 const Dashboard = () => {
-  const totalCredits = 130
-  const earnedCredits = 50
-  const progress = (earnedCredits / totalCredits) * 100
+  const [grades, setGrades] = useState<Grade[]>([])
+
+  useEffect(() => {
+    db.grades.toArray().then(setGrades)
+  }, [])
+
+  const gpa = calcGpa(grades)
+  const gpaCredits = grades
+    .filter((g) => g.grade in GRADE_POINTS)
+    .reduce((sum, g) => sum + g.credits, 0)
+  const earnedCredits = calcEarnedCredits(grades)
+  const semesterGpas = calcSemesterGpas(grades)
+  const byCategory = calcCreditsByCategory(grades)
+
+  const liberalArtsCredits = LIBERAL_ARTS_CATEGORIES.reduce(
+    (sum, c) => sum + byCategory[c],
+    0,
+  )
+  const liberalArtsProgress = Math.min(
+    (liberalArtsCredits / LIBERAL_ARTS_REQUIRED) * 100,
+    100,
+  )
 
   const creditCategories = [
-    { name: '공통교양', credits: 16 },
-    { name: '핵심교양', credits: 9 },
-    { name: '진로소양', credits: 1 },
-    { name: '핵심전공', credits: 24 },
+    ...CATEGORIES.map((name) => ({ name, credits: byCategory[name] })),
+    ...(byCategory['미분류'] > 0
+      ? [{ name: '미분류', credits: byCategory['미분류'] }]
+      : []),
   ]
 
   return (
@@ -34,12 +68,12 @@ const Dashboard = () => {
           </p>
           <div className="mt-4 flex items-end gap-2">
             <span className="text-4xl font-bold text-gray-900">
-              3.45
+              {gpa !== null ? gpa.toFixed(2) : '-'}
             </span>
             <span className="mb-1 text-sm text-gray-400">/ 4.5</span>
           </div>
           <p className="mt-3 text-sm text-gray-500">
-            백분위 89.50
+            평점 반영 {gpaCredits}학점
           </p>
         </div>
 
@@ -49,12 +83,12 @@ const Dashboard = () => {
           </p>
           <div className="mt-4 flex items-end gap-2">
             <span className="text-4xl font-bold text-gray-900">
-              50
+              {earnedCredits}
             </span>
-            <span className="mb-1 text-sm text-gray-400">/ 130학점</span>
+            <span className="mb-1 text-sm text-gray-400">학점</span>
           </div>
           <p className="mt-3 text-sm text-gray-500">
-            졸업까지 80학점 남음
+            총 졸업학점 미설정
           </p>
         </div>
       </section>
@@ -75,6 +109,11 @@ const Dashboard = () => {
           </span>
         </div>
 
+        {semesterGpas.length > 0 ? (
+          <div className="mt-6">
+            <GpaChart data={semesterGpas} />
+          </div>
+        ) : (
         <div className="mt-6 flex h-48 items-center justify-center rounded-xl bg-gray-50">
           <div className="text-center">
             <p className="text-sm font-medium text-gray-500">
@@ -85,6 +124,7 @@ const Dashboard = () => {
             </p>
           </div>
         </div>
+        )}
       </section>
 
       {/* Graduation Progress */}
@@ -98,25 +138,29 @@ const Dashboard = () => {
               전체 졸업 학점 기준
             </p>
           </div>
-          <span className="text-2xl font-bold text-violet-600">
-            {progress.toFixed(1)}%
+          <span className="text-sm font-medium text-gray-400">
+            미설정
           </span>
         </div>
 
-        <div className="mt-6 h-3 overflow-hidden rounded-full bg-gray-100">
-          <div
-            className="h-full rounded-full bg-violet-600 transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        <p className="mt-6 rounded-xl bg-gray-50 p-4 text-sm text-gray-500">
+          총 졸업학점이 확정되면 전체 진행률이 표시됩니다.
+        </p>
 
-        <div className="mt-3 flex justify-between text-sm">
-          <span className="font-medium text-gray-700">
-            {earnedCredits}학점 취득
-          </span>
-          <span className="text-gray-400">
-            목표 {totalCredits}학점
-          </span>
+        <div className="mt-6">
+          <div className="mb-2 flex justify-between text-sm">
+            <span className="font-medium text-gray-700">교양</span>
+            <span className="text-gray-500">
+              {liberalArtsCredits} / {LIBERAL_ARTS_REQUIRED}학점 (
+              {liberalArtsProgress.toFixed(1)}%)
+            </span>
+          </div>
+          <div className="h-3 overflow-hidden rounded-full bg-gray-100">
+            <div
+              className="h-full rounded-full bg-violet-600 transition-all"
+              style={{ width: `${liberalArtsProgress}%` }}
+            />
+          </div>
         </div>
       </section>
 
@@ -144,7 +188,7 @@ const Dashboard = () => {
                 <div
                   className="h-full rounded-full bg-violet-500"
                   style={{
-                    width: `${(category.credits / earnedCredits) * 100}%`,
+                    width: `${earnedCredits > 0 ? (category.credits / earnedCredits) * 100 : 0}%`,
                   }}
                 />
               </div>
