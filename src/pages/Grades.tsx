@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from 'react'
 import { CATEGORIES, db, type Category, type Grade } from '../db/database'
+import { AREA_SUGGESTIONS } from '../data/requirements'
 import { GRADE_OPTIONS, calcSemesterGpas } from '../utils/gpa'
 
 const fieldClass =
@@ -32,6 +33,7 @@ function Grades() {
   const [credits, setCredits] = useState(3)
   const [grade, setGrade] = useState('A+')
   const [category, setCategory] = useState<Category>('공통교양')
+  const [area, setArea] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
 
   const loadGrades = async () => {
@@ -55,6 +57,7 @@ function Grades() {
       credits,
       grade,
       category,
+      area: area.trim() || undefined,
     }
 
     if (editingId !== null) {
@@ -65,6 +68,7 @@ function Grades() {
     }
 
     setCourseName('')
+    setArea('')
     await loadGrades()
   }
 
@@ -77,18 +81,14 @@ function Grades() {
     setCredits(item.credits)
     setGrade(item.grade)
     setCategory(item.category ?? '공통교양')
+    setArea(item.area ?? '')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleCancelEdit = () => {
     setEditingId(null)
     setCourseName('')
-  }
-
-  const handleDelete = async (id: number) => {
-    await db.grades.delete(id)
-    if (id === editingId) handleCancelEdit()
-    await loadGrades()
+    setArea('')
   }
 
   // 최근 학기가 위로 오도록 정렬
@@ -138,7 +138,7 @@ function Grades() {
             </div>
           </label>
 
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700 sm:col-span-2">
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
             영역
             <div className="relative">
               <select
@@ -152,6 +152,23 @@ function Grades() {
               </select>
               <SelectChevron />
             </div>
+          </label>
+
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
+            세부 영역 (선택)
+            <input
+              type="text"
+              value={area}
+              onChange={(e) => setArea(e.target.value)}
+              list="area-suggestions"
+              placeholder="예: SW문해, 자연의 설명"
+              className={fieldClass}
+            />
+            <datalist id="area-suggestions">
+              {(AREA_SUGGESTIONS[category] ?? []).map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
           </label>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-gray-700 sm:col-span-2">
@@ -285,6 +302,11 @@ function Grades() {
                               {item.category ?? (
                                 <span className="text-gray-400">미분류</span>
                               )}
+                              {item.area && (
+                                <span className="block text-xs text-gray-400">
+                                  {item.area}
+                                </span>
+                              )}
                             </td>
                             <td className="p-3">{item.courseName}</td>
                             <td className="p-3">{item.credits}</td>
@@ -292,17 +314,9 @@ function Grades() {
                             <td className="p-3 whitespace-nowrap">
                               <button
                                 onClick={() => handleEdit(item)}
-                                className="mr-3 text-gray-500 hover:text-gray-900"
+                                className="text-gray-500 hover:text-gray-900"
                               >
                                 수정
-                              </button>
-                              <button
-                                onClick={() =>
-                                  item.id !== undefined && handleDelete(item.id)
-                                }
-                                className="text-red-500 hover:text-red-700"
-                              >
-                                삭제
                               </button>
                             </td>
                           </tr>

@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 import GpaChart from '../components/GpaChart'
 import { CATEGORIES, db, type Grade } from '../db/database'
+import { REQUIREMENTS } from '../data/requirements'
+import { calcRequirementStatus, calcTotalProgress } from '../utils/graduation'
 import {
   GRADE_POINTS,
   calcCreditsByCategory,
@@ -10,10 +12,6 @@ import {
   calcSemesterGpas,
   toPercentage,
 } from '../utils/gpa'
-
-// 확정된 졸업 기준: 교양 33학점. 총 졸업학점은 아직 미확정.
-const LIBERAL_ARTS_REQUIRED = 33
-const LIBERAL_ARTS_CATEGORIES = ['공통교양', '핵심교양', '진로소양'] as const
 
 const Dashboard = () => {
   const [grades, setGrades] = useState<Grade[]>([])
@@ -30,21 +28,28 @@ const Dashboard = () => {
   const semesterGpas = calcSemesterGpas(grades)
   const byCategory = calcCreditsByCategory(grades)
 
-  const liberalArtsCredits = LIBERAL_ARTS_CATEGORIES.reduce(
-    (sum, c) => sum + byCategory[c],
-    0,
-  )
-  const liberalArtsProgress = Math.min(
-    (liberalArtsCredits / LIBERAL_ARTS_REQUIRED) * 100,
-    100,
-  )
+  const total = calcTotalProgress(grades)
 
-  const creditCategories = [
-    ...CATEGORIES.map((name) => ({ name, credits: byCategory[name] })),
-    ...(byCategory['미분류'] > 0
-      ? [{ name: '미분류', credits: byCategory['미분류'] }]
-      : []),
-  ]
+  // 졸업 요건 그룹(교양, 전공)별 진행률. 영역별 기준을 넘긴 학점은 그룹 진행률에 넣지 않음
+  const groupProgress = REQUIREMENTS.groups.map((group) => {
+    const items = group.items.map((item) => calcRequirementStatus(grades, item))
+    const earned = items.reduce((sum, i) => sum + Math.min(i.earned, i.credits), 0)
+    const required = items.reduce((sum, i) => sum + i.credits, 0)
+    return {
+      name: group.name,
+      earned,
+      required,
+      percent: Math.min((earned / required) * 100, 100),
+    }
+  })
+
+  // 기준이 있는 영역은 항상, 나머지(일반선택, 미분류)는 학점이 있을 때만 표시
+  const requiredCategories = new Set<string>(
+    REQUIREMENTS.groups.flatMap((g) => g.items.flatMap((i) => i.categories)),
+  )
+  const creditCategories = [...CATEGORIES, '미분류' as const]
+    .filter((name) => requiredCategories.has(name) || byCategory[name] > 0)
+    .map((name) => ({ name, credits: byCategory[name] }))
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -88,10 +93,12 @@ const Dashboard = () => {
             <span className="text-4xl font-bold text-gray-900">
               {earnedCredits}
             </span>
-            <span className="mb-1 text-sm text-gray-400">학점</span>
+            <span className="mb-1 text-sm text-gray-400">
+              / {total.total}학점
+            </span>
           </div>
           <p className="mt-3 text-sm text-gray-500">
-            총 졸업학점 미설정
+            졸업까지 {total.remaining}학점 남음
           </p>
         </div>
       </section>
@@ -141,29 +148,42 @@ const Dashboard = () => {
               전체 졸업 학점 기준
             </p>
           </div>
-          <span className="text-sm font-medium text-gray-400">
-            미설정
+          <span className="text-2xl font-bold text-violet-600">
+            {total.percent.toFixed(1)}%
           </span>
         </div>
 
-        <p className="mt-6 rounded-xl bg-gray-50 p-4 text-sm text-gray-500">
-          총 졸업학점이 확정되면 전체 진행률이 표시됩니다.
-        </p>
+        <div className="mt-6 h-3 overflow-hidden rounded-full bg-gray-100">
+          <div
+            className="h-full rounded-full bg-violet-600 transition-all"
+            style={{ width: `${total.percent}%` }}
+          />
+        </div>
 
-        <div className="mt-6">
-          <div className="mb-2 flex justify-between text-sm">
-            <span className="font-medium text-gray-700">교양</span>
-            <span className="text-gray-500">
-              {liberalArtsCredits} / {LIBERAL_ARTS_REQUIRED}학점 (
-              {liberalArtsProgress.toFixed(1)}%)
-            </span>
-          </div>
-          <div className="h-3 overflow-hidden rounded-full bg-gray-100">
-            <div
-              className="h-full rounded-full bg-violet-600 transition-all"
-              style={{ width: `${liberalArtsProgress}%` }}
-            />
-          </div>
+        <div className="mt-3 flex justify-between text-sm">
+          <span className="font-medium text-gray-700">
+            {total.earned}학점 취득
+          </span>
+          <span className="text-gray-400">목표 {total.total}학점</span>
+        </div>
+
+        <div className="mt-8 space-y-5">
+          {groupProgress.map((group) => (
+            <div key={group.name}>
+              <div className="mb-2 flex justify-between text-sm">
+                <span className="font-medium text-gray-700">{group.name}</span>
+                <span className="text-gray-500">
+                  {group.earned} / {group.required}학점 ({group.percent.toFixed(1)}%)
+                </span>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full bg-violet-500 transition-all"
+                  style={{ width: `${group.percent}%` }}
+                />
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 

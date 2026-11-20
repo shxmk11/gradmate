@@ -21,6 +21,8 @@ function toGrade(raw: unknown): Grade | null {
     return null
   }
 
+  if (r.area !== undefined && typeof r.area !== 'string') return null
+
   return {
     year: r.year,
     semester: r.semester as Grade['semester'],
@@ -28,6 +30,7 @@ function toGrade(raw: unknown): Grade | null {
     credits: r.credits,
     grade: r.grade,
     category: r.category as Grade['category'],
+    area: typeof r.area === 'string' && r.area.trim() ? r.area.trim() : undefined,
   }
 }
 

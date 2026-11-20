@@ -1,4 +1,4 @@
-import type { Category, Grade } from '../db/database'
+import { CATEGORIES, type Category, type Grade } from '../db/database'
 
 // 성신여대 4.5 만점 평점표
 // 성적표로 확인: A+ 4.5, A0 4.2, B+ 3.6, B0 3.3, B- 3.0, C+ 2.6
@@ -96,15 +96,14 @@ export function calcSemesterGpas(grades: Grade[]): SemesterGpa[] {
 export function calcCreditsByCategory(
   grades: Grade[],
 ): Record<Category | '미분류', number> {
-  const result: Record<Category | '미분류', number> = {
-    공통교양: 0,
-    핵심교양: 0,
-    진로소양: 0,
-    핵심전공: 0,
-    미분류: 0,
-  }
+  const result = Object.fromEntries(
+    [...CATEGORIES, '미분류'].map((c) => [c, 0]),
+  ) as Record<Category | '미분류', number>
   for (const g of grades.filter(isEarned)) {
     result[g.category ?? '미분류'] += g.credits
   }
   return result
 }
+
+/** 학점을 취득한 과목만 (F 제외) */
+export const earnedGrades = (grades: Grade[]) => grades.filter(isEarned)
