@@ -3,6 +3,27 @@ import { useEffect, useState } from 'react'
 import { CATEGORIES, db, type Category, type Grade } from '../db/database'
 import { calcSemesterGpas } from '../utils/gpa'
 
+const fieldClass =
+  'block h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal text-gray-900 outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
+
+// Safari 기본 스핀 버튼 제거
+const numberFieldClass = `${fieldClass} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`
+
+const selectClass = `${fieldClass} cursor-pointer appearance-none pr-10`
+
+const SelectChevron = () => (
+  <svg
+    className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-gray-400"
+    viewBox="0 0 20 20"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    aria-hidden="true"
+  >
+    <path d="M6 8l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
 function Grades() {
   const [grades, setGrades] = useState<Grade[]>([])
   const [year, setYear] = useState(2026)
@@ -89,90 +110,102 @@ function Grades() {
         </h2>
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
-          <label className="space-y-2 text-sm font-medium">
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
             연도
             <input
               type="number"
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 p-3"
+              className={numberFieldClass}
               required
             />
           </label>
 
-          <label className="space-y-2 text-sm font-medium">
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
             학기
-            <select
-              value={semester}
-              onChange={(e) => setSemester(e.target.value as Grade['semester'])}
-              className="w-full rounded-lg border border-gray-200 p-3"
-            >
-              <option>1학기</option>
-              <option>2학기</option>
-              <option>여름학기</option>
-              <option>겨울학기</option>
-            </select>
+            <div className="relative">
+              <select
+                value={semester}
+                onChange={(e) => setSemester(e.target.value as Grade['semester'])}
+                className={selectClass}
+              >
+                <option>1학기</option>
+                <option>2학기</option>
+                <option>여름학기</option>
+                <option>겨울학기</option>
+              </select>
+              <SelectChevron />
+            </div>
           </label>
 
-          <label className="space-y-2 text-sm font-medium sm:col-span-2">
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700 sm:col-span-2">
             영역
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as Category)}
-              className="w-full rounded-lg border border-gray-200 p-3"
-            >
-              {CATEGORIES.map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value as Category)}
+                className={selectClass}
+              >
+                {CATEGORIES.map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+              <SelectChevron />
+            </div>
           </label>
 
-          <label className="space-y-2 text-sm font-medium sm:col-span-2">
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700 sm:col-span-2">
             과목명
             <input
               type="text"
               value={courseName}
               onChange={(e) => setCourseName(e.target.value)}
               placeholder="과목명을 입력하세요."
-              className="w-full rounded-lg border border-gray-200 p-3"
+              className={fieldClass}
               required
             />
           </label>
 
-          <label className="space-y-2 text-sm font-medium">
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
             학점
-            <select
-              value={credits}
-              onChange={(e) => setCredits(Number(e.target.value))}
-              className="w-full rounded-lg border border-gray-200 p-3"
-            >
-              {[1, 2, 3, 4, 5, 6].map((value) => (
-                <option key={value} value={value}>
-                  {value}학점
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={credits}
+                onChange={(e) => setCredits(Number(e.target.value))}
+                className={selectClass}
+              >
+                {[1, 2, 3, 4, 5, 6].map((value) => (
+                  <option key={value} value={value}>
+                    {value}학점
+                  </option>
+                ))}
+              </select>
+              <SelectChevron />
+            </div>
           </label>
 
-          <label className="space-y-2 text-sm font-medium">
+          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
             성적
-            <select
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 p-3"
-            >
-              {['A+', 'A0', 'B+', 'B0', 'C+', 'C0', 'D+', 'D0', 'F', 'P'].map(
-                (value) => (
-                  <option key={value}>{value}</option>
-                ),
-              )}
-            </select>
+            <div className="relative">
+              <select
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+                className={selectClass}
+              >
+                {['A+', 'A0', 'B+', 'B0', 'C+', 'C0', 'D+', 'D0', 'F', 'P'].map(
+                  (value) => (
+                    <option key={value}>{value}</option>
+                  ),
+                )}
+              </select>
+              <SelectChevron />
+            </div>
           </label>
 
           <div className="flex gap-3 sm:col-span-2">
             <button
               type="submit"
-              className="flex-1 rounded-lg bg-violet-600 px-5 py-3 font-medium text-white transition hover:bg-violet-700"
+              className="flex-1 h-11 rounded-lg bg-violet-600 px-5 text-sm font-medium text-white transition hover:bg-violet-700"
             >
               {editingId !== null ? '수정 완료' : '과목 등록'}
             </button>
@@ -180,7 +213,7 @@ function Grades() {
               <button
                 type="button"
                 onClick={handleCancelEdit}
-                className="rounded-lg border border-gray-200 px-5 py-3 font-medium text-gray-600 transition hover:bg-gray-100"
+                className="h-11 rounded-lg border border-gray-200 px-5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
               >
                 취소
               </button>
