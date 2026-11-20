@@ -1,6 +1,6 @@
 
 import { useEffect, useState } from 'react'
-import { db, type Grade } from '../db/database'
+import { CATEGORIES, db, type Category, type Grade } from '../db/database'
 
 function Grades() {
   const [grades, setGrades] = useState<Grade[]>([])
@@ -9,6 +9,7 @@ function Grades() {
   const [courseName, setCourseName] = useState('')
   const [credits, setCredits] = useState(3)
   const [grade, setGrade] = useState('A+')
+  const [category, setCategory] = useState<Category>('공통교양')
 
   const loadGrades = async () => {
     const data = await db.grades.toArray()
@@ -16,7 +17,7 @@ function Grades() {
   }
 
   useEffect(() => {
-    loadGrades()
+    db.grades.toArray().then(setGrades)
   }, [])
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -30,6 +31,7 @@ function Grades() {
       courseName: courseName.trim(),
       credits,
       grade,
+      category,
     })
 
     setCourseName('')
@@ -77,6 +79,19 @@ function Grades() {
               <option>2학기</option>
               <option>여름학기</option>
               <option>겨울학기</option>
+            </select>
+          </label>
+
+          <label className="space-y-2 text-sm font-medium sm:col-span-2">
+            영역
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value as Category)}
+              className="w-full rounded-lg border border-gray-200 p-3"
+            >
+              {CATEGORIES.map((value) => (
+                <option key={value}>{value}</option>
+              ))}
             </select>
           </label>
 
@@ -146,6 +161,7 @@ function Grades() {
               <thead className="border-b border-gray-200 text-gray-500">
                 <tr>
                   <th className="p-3">학기</th>
+                  <th className="p-3">영역</th>
                   <th className="p-3">과목명</th>
                   <th className="p-3">학점</th>
                   <th className="p-3">성적</th>
@@ -157,6 +173,11 @@ function Grades() {
                   <tr key={item.id} className="border-b border-gray-100">
                     <td className="p-3 whitespace-nowrap">
                       {item.year}년 {item.semester}
+                    </td>
+                    <td className="p-3 whitespace-nowrap">
+                      {item.category ?? (
+                        <span className="text-gray-400">미분류</span>
+                      )}
                     </td>
                     <td className="p-3">{item.courseName}</td>
                     <td className="p-3">{item.credits}</td>
