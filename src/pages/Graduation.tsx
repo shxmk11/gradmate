@@ -137,7 +137,11 @@ function Graduation() {
                             {item.minAreas !== undefined && (
                               <>
                                 이수 영역 {item.areas.length} / {item.minAreas}개 이상
-                                {item.areas.length > 0 && ` · ${item.areas.join(', ')}`}
+                                {!areasOk &&
+                                  item.areaOptions &&
+                                  ` · 아직 안 들은 영역: ${item.areaOptions
+                                    .filter((a) => !item.areas.includes(a))
+                                    .join(', ')}`}
                               </>
                             )}
                           </p>
@@ -150,6 +154,36 @@ function Graduation() {
             )
           })}
         </div>
+      </section>
+
+      {/* 자유선택 과정 */}
+      <section className="rounded-2xl border border-gray-200 bg-white p-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">자유선택 과정</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              부전공, 복수전공, 교직을 하지 않으면 전공심화과정으로 간주돼요.
+            </p>
+          </div>
+          <StatusBadge done={false} label={REQUIREMENTS.freeTrack ?? '미정'} />
+        </div>
+        <ul className="mt-5 divide-y divide-gray-100 text-sm">
+          {REQUIREMENTS.freeTrackOptions.map((option) => (
+            <li
+              key={option.name}
+              className="flex items-center justify-between gap-4 py-3"
+            >
+              <span className="font-medium text-gray-700">{option.name}</span>
+              <span className="text-gray-500">
+                {option.credits}학점
+                <span className="ml-2 text-gray-400">{option.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-xs text-gray-400">
+          과정을 정하면 해당 학점이 영역별 이수 현황에 반영돼요. 교직은 교직과정 기준을 따로 확인해 주세요.
+        </p>
       </section>
 
       {/* 필수 과목 */}

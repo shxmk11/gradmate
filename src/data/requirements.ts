@@ -11,6 +11,8 @@ export interface CreditRequirement {
   note?: string
   // 이수해야 하는 최소 세부 영역 수 (예: 핵심교양 4개 영역)
   minAreas?: number
+  // 세부 영역 전체 목록 (아직 듣지 않은 영역 표시용)
+  areaOptions?: string[]
 }
 
 export interface RequiredCourse {
@@ -24,14 +26,58 @@ export interface RequirementGroup {
   items: CreditRequirement[]
 }
 
+// 자유선택 과정 선택지 (부·복수전공·교직을 하지 않으면 전공심화로 간주)
+export interface FreeTrackOption {
+  name: string
+  credits: number
+  detail: string
+}
+
+// 세부 영역 선택지. 여기 있는 영역(공통교양, 핵심교양)만 세부 영역을 입력한다.
+export const AREA_OPTIONS: Partial<Record<Category, string[]>> = {
+  공통교양: [
+    '기초필수',
+    'SW문해',
+    '영어',
+    '제2외국어',
+    '경험적·수리적 추리',
+    '창의예술',
+  ],
+  핵심교양: [
+    '인식과 가치',
+    '문학과 예술',
+    '역사의 해석',
+    '사회의 이해',
+    '자연의 설명',
+    '공학과 기술',
+  ],
+}
+
 export const REQUIREMENTS = {
-  title: '2025학번 AI융합학부 · 전공심화과정',
+  title: '2025학번 AI융합학부',
   source: '2025학년도 졸업가이드(2026.1.)',
   totalCredits: 130,
   minGpa: 2.0,
   minSemesters: 8,
 
   groups: [
+    {
+      name: '전공',
+      items: [
+        {
+          label: '핵심전공',
+          categories: ['핵심전공'],
+          credits: 27,
+          note: '전공 1·2영역',
+        },
+        {
+          label: '심화전공',
+          categories: ['심화전공'],
+          credits: 21,
+          note: '전공 3·4영역',
+        },
+      ],
+    },
     {
       name: '교양',
       items: [
@@ -41,6 +87,7 @@ export const REQUIREMENTS = {
           categories: ['핵심교양'],
           credits: 15,
           minAreas: 4,
+          areaOptions: AREA_OPTIONS.핵심교양,
         },
         {
           label: '진로소양',
@@ -50,25 +97,15 @@ export const REQUIREMENTS = {
         },
       ],
     },
-    {
-      // 전공(핵심 27, 심화 21) + 전공심화(핵심 12, 심화 12)
-      name: '전공',
-      items: [
-        {
-          label: '핵심전공',
-          categories: ['핵심전공'],
-          credits: 39,
-          note: '전공 27 + 전공심화 12 · 전공 1·2영역',
-        },
-        {
-          label: '심화전공',
-          categories: ['심화전공'],
-          credits: 33,
-          note: '전공 21 + 전공심화 12 · 전공 3·4영역',
-        },
-      ],
-    },
   ] satisfies RequirementGroup[],
+
+  // 자유선택 과정: 아직 정하지 않음 (정하면 이 값을 바꾸고 groups에 반영)
+  freeTrack: null as string | null,
+  freeTrackOptions: [
+    { name: '전공심화', credits: 24, detail: '핵심 12 + 심화 12' },
+    { name: '부전공', credits: 21, detail: '해당 학과 전공과목' },
+    { name: '복수전공', credits: 42, detail: '핵심 24 + 심화 18' },
+  ] satisfies FreeTrackOption[],
 
   // 기초필수, 학과 지정 필수(수학·통계·IT계열), 진로소양 필수
   requiredCourses: [
@@ -90,27 +127,4 @@ export const REQUIREMENTS = {
     '졸업논문: AI융합학부 미시행',
     '학과별 외국어인증제: 폐지 (2024.5.3.)',
   ],
-}
-
-// 세부 영역 입력 시 제안 목록
-export const AREA_SUGGESTIONS: Partial<Record<Category, string[]>> = {
-  공통교양: [
-    '기초필수',
-    'SW문해',
-    '영어',
-    '제2외국어',
-    '경험적·수리적 추리',
-    '창의예술',
-  ],
-  핵심교양: [
-    '인식과 가치',
-    '문학과 예술',
-    '역사의 해석',
-    '사회의 이해',
-    '자연의 설명',
-    '공학과 기술',
-  ],
-  진로소양: ['도전과 실천'],
-  핵심전공: ['1영역', '2영역'],
-  심화전공: ['3영역', '4영역'],
 }

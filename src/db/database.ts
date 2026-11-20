@@ -2,11 +2,11 @@
 import Dexie, { type Table } from 'dexie'
 
 export const CATEGORIES = [
+  '핵심전공',
+  '심화전공',
   '공통교양',
   '핵심교양',
   '진로소양',
-  '핵심전공',
-  '심화전공',
   '일반선택',
 ] as const
 export type Category = (typeof CATEGORIES)[number]

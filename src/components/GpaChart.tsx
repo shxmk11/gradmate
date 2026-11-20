@@ -4,8 +4,30 @@ import type { SemesterGpa } from '../utils/gpa'
 const WIDTH = 640
 const HEIGHT = 220
 const PAD = { top: 16, right: 56, bottom: 32, left: 36 }
-const MAX = 4.5
-const TICKS = [0, 1.5, 3, 4.5]
+const SCALE_MAX = 4.5
+
+// 성적 범위에 맞춘 세로축: 최소·최대값에 여백을 두고 0.1 단위로 맞춤
+function calcScale(values: number[]) {
+  const lo = values.length ? Math.min(...values) : 0
+  const hi = values.length ? Math.max(...values) : SCALE_MAX
+  let min = Math.floor((lo - 0.1) * 10) / 10
+  let max = Math.ceil((hi + 0.1) * 10) / 10
+  // 차이가 너무 작으면 최소 0.6 폭 확보
+  if (max - min < 0.6) {
+    const mid = (min + max) / 2
+    min = mid - 0.3
+    max = mid + 0.3
+  }
+  min = Math.max(0, Math.round(min * 10) / 10)
+  max = Math.min(SCALE_MAX, Math.round(max * 10) / 10)
+
+  const step = [0.1, 0.2, 0.25, 0.5, 1].find((s) => (max - min) / s <= 5) ?? 1
+  const ticks: number[] = []
+  for (let t = Math.ceil(min / step) * step; t <= max + 1e-9; t += step) {
+    ticks.push(Math.round(t * 100) / 100)
+  }
+  return { min, max, ticks }
+}
 
 const SERIES = [
   { key: 'gpa', label: '학기별', color: '#a78bfa', dash: '5 4' },
@@ -28,7 +50,13 @@ function GpaChart({ data }: Props) {
   const innerH = HEIGHT - PAD.top - PAD.bottom
   const step = data.length > 1 ? innerW / (data.length - 1) : 0
   const x = (i: number) => PAD.left + (data.length > 1 ? i * step : innerW / 2)
-  const y = (v: number) => PAD.top + innerH - (v / MAX) * innerH
+  const scale = calcScale(
+    data.flatMap((d) =>
+      [d.gpa, d.cumulativeGpa].filter((v): v is number => v !== null),
+    ),
+  )
+  const y = (v: number) =>
+    PAD.top + innerH - ((v - scale.min) / (scale.max - scale.min)) * innerH
   const band = data.length > 1 ? step : innerW
 
   const hovered = hover !== null ? data[hover] : null
@@ -81,7 +109,7 @@ function GpaChart({ data }: Props) {
         aria-label="학기별 및 누적 GPA 추이"
         onMouseLeave={() => setHover(null)}
       >
-        {TICKS.map((t) => (
+        {scale.ticks.map((t) => (
           <g key={t}>
             <line
               x1={PAD.left}
@@ -97,7 +125,7 @@ function GpaChart({ data }: Props) {
               dominantBaseline="middle"
               className="fill-gray-400 text-[11px]"
             >
-              {t.toFixed(1)}
+              {t.toFixed(Math.round(t * 100) % 10 === 0 ? 1 : 2)}
             </text>
           </g>
         ))}

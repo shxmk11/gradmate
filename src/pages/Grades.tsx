@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from 'react'
 import { CATEGORIES, db, type Category, type Grade } from '../db/database'
-import { AREA_SUGGESTIONS } from '../data/requirements'
+import { AREA_OPTIONS } from '../data/requirements'
 import { GRADE_OPTIONS, calcSemesterGpas } from '../utils/gpa'
 
 const fieldClass =
@@ -35,6 +35,7 @@ function Grades() {
   const [category, setCategory] = useState<Category>('공통교양')
   const [area, setArea] = useState('')
   const [editingId, setEditingId] = useState<number | null>(null)
+  const areaOptions = AREA_OPTIONS[category] ?? []
 
   const loadGrades = async () => {
     const data = await db.grades.toArray()
@@ -57,7 +58,7 @@ function Grades() {
       credits,
       grade,
       category,
-      area: area.trim() || undefined,
+      area: areaOptions.length > 0 && area ? area : undefined,
     }
 
     if (editingId !== null) {
@@ -143,7 +144,12 @@ function Grades() {
             <div className="relative">
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value as Category)}
+                onChange={(e) => {
+                  const next = e.target.value as Category
+                  setCategory(next)
+                  // 새 영역에 없는 세부 영역이면 비우기
+                  if (!(AREA_OPTIONS[next] ?? []).includes(area)) setArea('')
+                }}
                 className={selectClass}
               >
                 {CATEGORIES.map((value) => (
@@ -154,21 +160,29 @@ function Grades() {
             </div>
           </label>
 
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-            세부 영역 (선택)
-            <input
-              type="text"
-              value={area}
-              onChange={(e) => setArea(e.target.value)}
-              list="area-suggestions"
-              placeholder="예: SW문해, 자연의 설명"
-              className={fieldClass}
-            />
-            <datalist id="area-suggestions">
-              {(AREA_SUGGESTIONS[category] ?? []).map((value) => (
-                <option key={value} value={value} />
-              ))}
-            </datalist>
+          <label
+            className={`flex flex-col gap-2 text-sm font-medium ${
+              areaOptions.length > 0 ? 'text-gray-700' : 'text-gray-400'
+            }`}
+          >
+            세부 영역
+            <div className="relative">
+              <select
+                value={area}
+                onChange={(e) => setArea(e.target.value)}
+                disabled={areaOptions.length === 0}
+                required={areaOptions.length > 0}
+                className={`${selectClass} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400`}
+              >
+                <option value="" disabled={areaOptions.length > 0}>
+                  {areaOptions.length > 0 ? '세부 영역 선택' : '해당 없음'}
+                </option>
+                {areaOptions.map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+              <SelectChevron />
+            </div>
           </label>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-gray-700 sm:col-span-2">
@@ -275,7 +289,7 @@ function Grades() {
                           : '-'}
                       </span>
                       <span className="mx-2 text-gray-300">·</span>
-                      신청 {totalCredits}학점 / 취득 {sem.earnedCredits}학점
+                      {totalCredits}학점 수강
                     </p>
                   </div>
 
@@ -302,7 +316,7 @@ function Grades() {
                               {item.category ?? (
                                 <span className="text-gray-400">미분류</span>
                               )}
-                              {item.area && (
+                              {item.area && item.category && AREA_OPTIONS[item.category] && (
                                 <span className="block text-xs text-gray-400">
                                   {item.area}
                                 </span>
