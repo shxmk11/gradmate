@@ -1,4 +1,4 @@
-import type { Grade } from '../db/database'
+import { db, type Grade } from '../db/database'
 import {
   REQUIREMENTS,
   type CreditRequirement,
@@ -53,6 +53,20 @@ export function calcTotalProgress(grades: Grade[]) {
     remaining: Math.max(total - earned, 0),
     percent: Math.min((earned / total) * 100, 100),
   }
+}
+
+/** 대시보드에서 고른 자유선택 과정 (진로 관리 상태와 같은 곳에 저장) */
+export async function loadFreeTrackCase() {
+  const saved = await db.career.get('career')
+  return saved?.freeTrackCase ?? null
+}
+
+export async function saveFreeTrackCase(id: string) {
+  const saved = await db.career.get('career')
+  await db.career.put({
+    ...(saved ?? { key: 'career', targetJobId: null, manualSkills: [], plan: [] }),
+    freeTrackCase: id,
+  })
 }
 
 /** 성적이 있는 정규학기(1·2학기) 수 */

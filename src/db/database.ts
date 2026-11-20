@@ -7,6 +7,8 @@ export const CATEGORIES = [
   '공통교양',
   '핵심교양',
   '진로소양',
+  '복수전공',
+  '부전공',
   '일반선택',
 ] as const
 export type Category = (typeof CATEGORIES)[number]
@@ -36,6 +38,8 @@ export interface CareerState {
   targetJobId: string | null
   manualSkills: string[]
   plan: PlannedCourse[]
+  // 졸업 요건 화면에서 골라 본 자유선택 과정 (없으면 미정)
+  freeTrackCase?: string | null
 }
 
 class GradMateDatabase extends Dexie {

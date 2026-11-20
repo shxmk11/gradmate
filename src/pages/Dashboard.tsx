@@ -2,8 +2,13 @@
 import { useEffect, useState } from 'react'
 import GpaChart from '../components/GpaChart'
 import { db, type Grade } from '../db/database'
-import { REQUIREMENTS } from '../data/requirements'
-import { calcRequirementStatus, calcTotalProgress } from '../utils/graduation'
+import { FREE_TRACK_CASES, getFreeTrackCase, requirementGroups } from '../data/requirements'
+import {
+  calcRequirementStatus,
+  calcTotalProgress,
+  loadFreeTrackCase,
+  saveFreeTrackCase,
+} from '../utils/graduation'
 import {
   GRADE_POINTS,
   IN_PROGRESS,
@@ -15,10 +20,19 @@ import {
 
 const Dashboard = () => {
   const [grades, setGrades] = useState<Grade[]>([])
+  const [trackCase, setTrackCase] = useState<string | null>(null)
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
+    loadFreeTrackCase().then(setTrackCase)
   }, [])
+
+  // 자유선택 과정: 여기서 고르면 졸업 요건·진로 관리에 함께 적용
+  const selectedCase = getFreeTrackCase(trackCase)
+  const pickTrackCase = (id: string) => {
+    setTrackCase(id)
+    saveFreeTrackCase(id)
+  }
 
   const gpa = calcGpa(grades)
   const gpaCredits = grades
@@ -33,8 +47,8 @@ const Dashboard = () => {
 
   const total = calcTotalProgress(grades)
 
-  // 졸업 요건 그룹(교양, 전공)별 진행률. 영역별 기준을 넘긴 학점은 그룹 진행률에 넣지 않음
-  const groupProgress = REQUIREMENTS.groups.map((group) => {
+  // 졸업 요건 그룹(교양, 전공, 자유선택)별 진행률. 영역별 기준을 넘긴 학점은 그룹 진행률에 넣지 않음
+  const groupProgress = requirementGroups(trackCase).map((group) => {
     const items = group.items.map((item) => calcRequirementStatus(grades, item))
     const earned = items.reduce((sum, i) => sum + Math.min(i.earned, i.credits), 0)
     const required = items.reduce((sum, i) => sum + i.credits, 0)
@@ -163,7 +177,25 @@ const Dashboard = () => {
           <span className="text-gray-400">목표 {total.total}학점</span>
         </div>
 
-        <div className="mt-8 space-y-5">
+        <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-6">
+          <span className="mr-2 text-sm font-medium text-gray-700">자유선택 과정</span>
+          {FREE_TRACK_CASES.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => pickTrackCase(c.id)}
+              className={`h-8 rounded-full border px-3.5 text-sm font-medium transition ${
+                selectedCase.id === c.id
+                  ? 'border-violet-300 bg-violet-50 text-violet-700'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-6 space-y-5">
           {groupProgress.map((group) => (
             <div key={group.name}>
               <div className="mb-2 flex justify-between text-sm">

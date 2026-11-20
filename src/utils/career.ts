@@ -8,6 +8,7 @@ import {
   type SkillId,
   type Track,
 } from '../data/career'
+import type { TrackId } from '../data/requirements'
 import { completedGrades, inProgressGrades } from './gpa'
 import { calcRequiredCourses, normalize } from './graduation'
 
@@ -82,20 +83,25 @@ export function recommendCourses(
 
 export interface TrackGroupStatus {
   label: string
+  /** 이수했거나 수강 중인 과목 */
   done: string[]
+  /** done 중 수강 중인 과목 */
+  inProgress: string[]
   remaining: string[]
   need: number
   pick?: number
 }
 
-/** 트랙별 이수 현황 (과목 수 기준) */
+/** 트랙별 이수 현황 (과목 수 기준, 수강 중인 과목도 포함) */
 export function calcTrackStatus(track: Track, grades: Grade[]) {
-  const taken = takenCourseNames(grades)
+  const ongoing = new Set(inProgressGrades(grades).map((g) => normalize(g.courseName)))
+  const taken = new Set([...takenCourseNames(grades), ...ongoing])
   const groups: TrackGroupStatus[] = track.groups.map((g) => {
     const done = g.courses.filter((name) => taken.has(normalize(name)))
     return {
       label: g.label,
       done,
+      inProgress: done.filter((name) => ongoing.has(normalize(name))),
       remaining: g.courses.filter((name) => !taken.has(normalize(name))),
       need: g.pick ?? g.courses.length,
       pick: g.pick,
@@ -175,6 +181,7 @@ interface PromptInput {
   earned: number
   totalCredits: number
   remainingAreas: string[]
+  freeTrack: string
   missingRequired: string[]
   plan: PlannedCourse[]
   courseNames: string[]
@@ -192,7 +199,7 @@ export function buildCounselPrompt(p: PromptInput) {
     `- 들은 과목: ${p.courseNames.join(', ') || '없음'}`,
     `- 남은 졸업 요건: ${p.remainingAreas.join(', ') || '없음'}`,
     `- 아직 안 들은 필수 과목: ${p.missingRequired.join(', ') || '없음'}`,
-    '- 자유선택 과정(전공심화·부전공·복수전공·융합연계전공): 아직 안 정함',
+    `- 자유선택 과정: ${p.freeTrack} (고민 중인 후보)`,
     '',
     '[역량]',
     `- 갖춘 역량: ${owned.join(', ') || '없음'}`,
@@ -232,6 +239,8 @@ const GROUP_CATEGORY: Record<string, Category> = {
   '2영역': '핵심전공',
   '3영역': '심화전공',
   '4영역': '심화전공',
+  '컴공 복수전공': '복수전공',
+  '영상 부전공': '부전공',
 }
 
 /**
@@ -283,6 +292,7 @@ export function recommendNextSemester(
   skills: SkillStatus[],
   grades: Grade[],
   slot: SemesterSlot,
+  tracks: TrackId[] = [],
 ): NextCourse[] {
   const taken = takenCourseNames(grades)
   for (const g of inProgressGrades(grades)) taken.add(normalize(g.courseName))
@@ -298,11 +308,14 @@ export function recommendNextSemester(
   return COURSES.filter(
     (c) =>
       (c.term === slot.semester || c.term === '매학기') &&
+      (!c.track || tracks.includes(c.track)) &&
       !taken.has(normalize(c.name)),
   )
     .map((course) => {
       const required = missingRequired.has(normalize(course.name))
-      const key = !!job?.keyCourses.includes(course.name)
+      const key =
+        !!job?.keyCourses.includes(course.name) ||
+        tracks.some((t) => job?.trackCourses[t]?.includes(course.name))
       const fills = job
         ? course.skills.filter(
             (s) => !owned.has(s) && (job.core.includes(s) || job.nice.includes(s)),

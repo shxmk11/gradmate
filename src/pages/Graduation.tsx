@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { db, type PlannedCourse, type Grade } from '../db/database'
 import { calcPlannedCredits } from '../utils/career'
-import { REQUIREMENTS } from '../data/requirements'
-import { calcGpa, inProgressGrades } from '../utils/gpa'
+import {
+  REQUIREMENTS,
+  getFreeTrackCase,
+  requirementGroups,
+  type FreeTrackPlan,
+} from '../data/requirements'
+import { IN_PROGRESS, calcGpa, earnedGrades, inProgressGrades } from '../utils/gpa'
 import {
   calcRequiredCourses,
   calcRequirementStatus,
   calcTotalProgress,
   countRegularSemesters,
+  normalize,
 } from '../utils/graduation'
 
 // planned: 수강 계획까지 들었을 때의 예상 진행률 (연한 색으로 이어서 표시)
@@ -41,11 +48,26 @@ function StatusBadge({ done, label }: { done: boolean; label?: string }) {
 function Graduation() {
   const [grades, setGrades] = useState<Grade[]>([])
   const [plan, setPlan] = useState<PlannedCourse[]>([])
+  const [trackCase, setTrackCase] = useState<string | null>(null)
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
-    db.career.get('career').then((saved) => saved && setPlan(saved.plan))
+    db.career.get('career').then((saved) => {
+      if (!saved) return
+      setPlan(saved.plan)
+      setTrackCase(saved.freeTrackCase ?? null)
+    })
   }, [])
+
+  // 대시보드에서 고른 자유선택 과정 (안 골랐으면 전공심화)
+  const selectedCase = getFreeTrackCase(trackCase)
+  // 이름이 같은 과목을 들었는지 (F 제외, 수강 중 포함)
+  const takenStatus = new Map(
+    earnedGrades(grades).map((g) => [
+      normalize(g.courseName),
+      g.grade === IN_PROGRESS ? '수강 중' : '이수',
+    ]),
+  )
 
   const total = calcTotalProgress(grades)
   const gpa = calcGpa(grades)
@@ -68,6 +90,92 @@ function Graduation() {
       (sum, c) => sum + (planned.byCategory[c as keyof typeof planned.byCategory] ?? 0),
       0,
     )
+
+  const renderTrackPlan = (p: FreeTrackPlan) => {
+    const all = [...new Set(p.rows.flatMap((r) => [...r.first, ...r.second]))]
+    const takenCount = all.filter((name) => takenStatus.has(normalize(name))).length
+    return (
+      <div key={p.id}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="font-bold text-gray-900">
+            {p.name}
+            {p.kind && <span className="ml-1 font-medium text-gray-500">{p.kind}</span>}
+          </h3>
+          <span className="text-sm text-gray-500">
+            <span className="font-medium text-gray-900">{p.credits}학점</span>
+            <span className="ml-2 text-gray-400">{p.detail}</span>
+          </span>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div>
+            <p className="mb-2 text-xs font-medium text-gray-400">이수 기준</p>
+            <ul className="space-y-1.5 text-sm text-gray-600">
+              {p.rules.map((r) => (
+                <li key={r}>· {r}</li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="mb-2 text-xs font-medium text-gray-400">신청</p>
+            <ul className="space-y-1.5 text-sm text-gray-600">
+              {p.apply.map((r) => (
+                <li key={r}>· {r}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-xs font-medium text-gray-400">개설 과목</p>
+          {takenCount > 0 && (
+            <p className="text-xs text-violet-600">이름이 같은 과목 {takenCount}개를 들었거나 듣는 중이에요</p>
+          )}
+        </div>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-gray-200 text-xs text-gray-500">
+              <tr>
+                <th className="w-24 p-2 font-medium" />
+                <th className="p-2 font-medium">1학기</th>
+                <th className="p-2 font-medium">2학기</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.rows.map((row) => (
+                <tr key={row.label} className="border-b border-gray-100 align-top">
+                  <td className="p-2 whitespace-nowrap text-gray-500">{row.label}</td>
+                  {[row.first, row.second].map((list, i) => (
+                    <td key={i} className="p-2">
+                      <div className="flex flex-wrap gap-1.5">
+                        {list.map((name) => {
+                          const status = takenStatus.get(normalize(name))
+                          return (
+                            <span
+                              key={name}
+                              className={`rounded-md px-2 py-0.5 text-xs ${
+                                status
+                                  ? 'bg-violet-50 font-medium text-violet-700'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}
+                            >
+                              {name}
+                              {status && ` · ${status}`}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-xs text-gray-400">{p.courseNote}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -130,7 +238,7 @@ function Graduation() {
         </p>
 
         <div className="mt-6 space-y-8">
-          {REQUIREMENTS.groups.map((group) => {
+          {requirementGroups(trackCase).map((group) => {
             const items = group.items.map((item) =>
               calcRequirementStatus(grades, item),
             )
@@ -157,6 +265,7 @@ function Graduation() {
                     const missingRequired = missingRequiredOf(item.categories)
                     const done = item.remaining === 0 && areasOk && missingRequired.length === 0
                     const inProgressHere = inProgressOf(item.categories)
+                    const plannedHere = plannedOf(item.categories)
 
                     return (
                       <div key={item.label}>
@@ -174,9 +283,9 @@ function Graduation() {
                                 (수강 중 {inProgressHere} 포함)
                               </span>
                             )}
-                            {plannedOf(item.categories) > 0 && (
+                            {plannedHere > 0 && (
                               <span className="ml-2 text-violet-500">
-                                (예상 +{plannedOf(item.categories)})
+                                (예상 +{plannedHere})
                               </span>
                             )}
                             {item.remaining > 0 && (
@@ -188,7 +297,7 @@ function Graduation() {
                         </div>
                         <ProgressBar
                           percent={(item.earned / item.credits) * 100}
-                          planned={(plannedOf(item.categories) / item.credits) * 100}
+                          planned={(plannedHere / item.credits) * 100}
                         />
                         {missingRequired.length > 0 && (
                           <p className="mt-2 text-xs text-violet-600">
@@ -227,32 +336,22 @@ function Graduation() {
 
       {/* 자유선택 과정 */}
       <section className="rounded-2xl border border-gray-200 bg-white p-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-bold text-gray-900">자유선택 과정</h2>
             <p className="mt-1 text-sm text-gray-500">
-              부전공, 복수전공, 교직을 하지 않으면 전공심화과정으로 간주돼요.
+              <Link to="/" className="font-medium text-violet-600 hover:underline">
+                대시보드
+              </Link>
+              에서 고른 과정의 요건이에요. 영역별 이수 현황의 「자유선택」에도 반영돼요.
             </p>
           </div>
-          <StatusBadge done={false} label={REQUIREMENTS.freeTrack ?? '미정'} />
+          <StatusBadge done={false} label={selectedCase.label} />
         </div>
-        <ul className="mt-5 divide-y divide-gray-100 text-sm">
-          {REQUIREMENTS.freeTrackOptions.map((option) => (
-            <li
-              key={option.name}
-              className="flex items-center justify-between gap-4 py-3"
-            >
-              <span className="font-medium text-gray-700">{option.name}</span>
-              <span className="text-gray-500">
-                {option.credits}학점
-                <span className="ml-2 text-gray-400">{option.detail}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-4 text-xs text-gray-400">
-          과정을 정하면 해당 학점이 영역별 이수 현황에 반영돼요. 교직은 교직과정 기준을 따로 확인해 주세요.
-        </p>
+
+        <div className="mt-6">
+          {renderTrackPlan(selectedCase.plan)}
+        </div>
       </section>
 
       {/* 필수 과목 */}

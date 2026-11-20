@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { db, type CareerState, type Grade } from '../db/database'
 import { JOBS, MAJOR_SELECTION, TRACKS, skillName, type SkillId } from '../data/career'
-import { REQUIREMENTS, type CreditRequirement } from '../data/requirements'
+import {
+  REQUIREMENTS,
+  getFreeTrackCase,
+  requirementGroups,
+  type CreditRequirement,
+} from '../data/requirements'
 import { calcEarnedCredits, calcGpa, completedGrades } from '../utils/gpa'
 import { calcRequiredCourses, calcRequirementStatus } from '../utils/graduation'
 import {
@@ -20,6 +25,8 @@ import {
 const EMPTY: CareerState = { key: 'career', targetJobId: null, manualSkills: [], plan: [] }
 
 const card = 'rounded-2xl border border-gray-200 bg-white p-6'
+
+const TRACK_SHORT = { ce: '컴공', aiv: '영상' } as const
 
 const TABS = [
   { id: 'job', name: '직무·역량' },
@@ -83,6 +90,13 @@ function Career() {
   }
 
   const job = JOBS.find((j) => j.id === state.targetJobId) ?? null
+  // 대시보드에서 고른 자유선택 과정: 추천 과목과 직무 표시에 반영
+  const freeTrack = getFreeTrackCase(state.freeTrackCase)
+  // 고른 과정 중 이 직무와 잘 맞는 것 (컴공, 영상)
+  const fitNames = (j: (typeof JOBS)[number]) =>
+    j.fitTracks.filter((t) => freeTrack.tracks.includes(t)).map((t) => TRACK_SHORT[t])
+  const trackKeyCourses = (j: (typeof JOBS)[number]) =>
+    freeTrack.tracks.flatMap((t) => j.trackCourses[t] ?? [])
   const skills = useMemo(() => calcSkills(grades, state.manualSkills), [grades, state.manualSkills])
   const owned = (id: SkillId) => skills.find((s) => s.id === id)?.owned ?? false
   const slots = upcomingSemesters(grades)
@@ -90,7 +104,7 @@ function Career() {
   // 수강 계획 탭에서 보고 있는 학기 (기본은 다음 학기)
   const sel = slots.find((s) => slotLabel(s) === slotPick) ?? slots[0]
   const selLabel = slotLabel(sel)
-  const selCourses = recommendNextSemester(job, skills, grades, sel)
+  const selCourses = recommendNextSemester(job, skills, grades, sel, freeTrack.tracks)
   const planOf = (slot: SemesterSlot) =>
     state.plan.filter((p) => p.year === slot.year && p.semester === slot.semester)
   const selPlan = planOf(sel)
@@ -178,7 +192,8 @@ function Career() {
     gpa: calcGpa(grades),
     earned: calcEarnedCredits(grades),
     totalCredits: REQUIREMENTS.totalCredits,
-    remainingAreas: REQUIREMENTS.groups
+    freeTrack: freeTrack.label,
+    remainingAreas: requirementGroups(state.freeTrackCase)
       .flatMap((g): CreditRequirement[] => g.items)
       .map((item) => calcRequirementStatus(grades, item))
       .filter((s) => s.remaining > 0)
@@ -257,6 +272,11 @@ function Career() {
                       <p className={`font-bold ${selected ? 'text-violet-700' : 'text-gray-900'}`}>
                         {j.name}
                       </p>
+                      {fitNames(j).length > 0 && (
+                        <span className="mt-1.5 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
+                          {fitNames(j).join(' · ')}과 잘 맞아요
+                        </span>
+                      )}
                       <p className="mt-1 text-xs text-gray-500">{j.work}</p>
                     </button>
                   )
@@ -278,10 +298,12 @@ function Career() {
                       <SkillChip key={id} id={id} owned={owned(id)} />
                     ))}
                   </div>
-                  <p className="text-gray-600">
-                    <span className="text-gray-500">잘 맞는 자유선택 과정 · </span>
-                    {job.freeTrack}
-                  </p>
+                  {trackKeyCourses(job).length > 0 && (
+                    <p className="text-gray-600">
+                      <span className="text-gray-500">{freeTrack.label}에서 추천 · </span>
+                      {trackKeyCourses(job).join(', ')}
+                    </p>
+                  )}
                   <p className="text-gray-600">
                     <span className="text-gray-500">준비 팁 · </span>
                     {job.tips}
@@ -413,7 +435,7 @@ function Career() {
                 title={`${selLabel} 추천 과목`}
                 desc={`${selLabel}에 열리는 과목 중 아직 안 들은 과목이에요. 졸업 필수 과목, ${
                   job ? `${job.name} 핵심 과목, 부족한 역량, 권장 학년` : '권장 학년'
-                } 순서로 보여 줘요.`}
+                } 순서로 보여 줘요. ${freeTrack.label} 과목도 함께 추천해요.`}
               />
               {!job && (
                 <p className="mt-3 text-xs text-violet-600">
@@ -481,7 +503,12 @@ function Career() {
                               {g.pick && ` (${g.pick}과목 선택)`}
                             </p>
                             {g.done.length > 0 && (
-                              <p className="mt-0.5 text-violet-700">이수: {g.done.join(', ')}</p>
+                              <p className="mt-0.5 text-violet-700">
+                                이수:{' '}
+                                {g.done
+                                  .map((name) => (g.inProgress.includes(name) ? `${name} (수강 중)` : name))
+                                  .join(', ')}
+                              </p>
                             )}
                             {g.done.length < g.need && (
                               <p className="mt-0.5 text-gray-400">남음: {g.remaining.join(', ')}</p>
@@ -511,12 +538,24 @@ function Career() {
                   <span className="text-gray-500">방법 · </span>
                   {MAJOR_SELECTION.how}
                 </li>
+                <li>
+                  <span className="text-gray-500">내 자유선택 과정 · </span>
+                  <span className="font-medium text-violet-700">{freeTrack.label}</span>
+                  <span className="ml-2 text-xs text-gray-400">대시보드에서 바꿀 수 있어요</span>
+                </li>
               </ul>
               <p className="mt-5 mb-2 text-sm font-bold text-gray-900">2025학번 여석</p>
               <ul className="divide-y divide-gray-100 text-sm">
                 {MAJOR_SELECTION.seats2025.map((s) => (
                   <li key={s.name} className="flex justify-between py-2">
-                    <span className="text-gray-700">{s.name}</span>
+                    <span className="text-gray-700">
+                      {s.name}
+                      {freeTrack.id.startsWith('ce') && s.name === '컴퓨터공학과' && (
+                        <span className="ml-2 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
+                          내 선택
+                        </span>
+                      )}
+                    </span>
                     <span className={s.seats === 0 ? 'text-gray-400' : 'text-gray-900'}>
                       {s.seats}명
                     </span>

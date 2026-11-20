@@ -1,4 +1,5 @@
 // 진로 관리 데이터 (참고용)
+import type { TrackId } from './requirements'
 // 과목·트랙·개설 시기: AI융합학부 홈페이지 「2026년도 교육과정 로드맵 (AI전공)」, 「트랙별 교육과정」, 「학년별 교육과정」(2026),
 // 타 학과 과목: 각 학과 홈페이지 「학년별 교육과정」(2026)
 // 직무·역량 연결은 공식 자료가 아니라 일반적인 기준으로 만든 참고용이에요.
@@ -35,6 +36,8 @@ export interface CareerCourse {
   skills: SkillId[]
   /** 타 학과 과목이면 학과명 */
   dept?: string
+  /** 자유선택 과정 과목이면 그 과정 (그 과정을 골랐을 때만 추천) */
+  track?: TrackId
   /** 배우는 내용 (과목명 기준 일반적인 내용, 참고용) */
   topics: string[]
 }
@@ -90,6 +93,32 @@ const TOPICS: Record<string, string[]> = {
   '모빌리티서비스': ['모빌리티', '서비스 설계'],
   '메타버스의 이해': ['메타버스', 'XR'],
   'IoT커넥티비티': ['IoT 통신', '연결 기술'],
+  // 컴퓨터공학과 (복수전공)
+  '웹프로그래밍기초': ['HTML·CSS', 'JavaScript'],
+  '파이썬 활용': ['Python 응용', '데이터 처리'],
+  '컴퓨터시스템관리': ['Linux', '시스템 관리'],
+  '고급자료구조': ['힙·해시', '균형 트리', '그래프 응용'],
+  '운영체제': ['프로세스·스레드', '메모리 관리', '스케줄링'],
+  '시스템프로그래밍': ['C 시스템 호출', 'Linux', '병행성'],
+  '서버시스템구축실습': ['서버 구축', '웹 서버', '배포'],
+  '소프트웨어분석및설계': ['요구사항 분석', 'UML', '설계'],
+  '인공지능응용': ['AI 응용', '모델 활용'],
+  '소프트웨어공학': ['개발 프로세스', '테스트', '협업'],
+  '오픈소스소프트웨어': ['Git', '오픈소스 기여'],
+  '정보보호': ['암호', '네트워크 보안'],
+  '소프트웨어디자인패턴': ['디자인 패턴', '객체지향 설계'],
+  '분산시스템': ['분산 처리', '동기화'],
+  '클라우드컴퓨팅': ['클라우드', '가상화·컨테이너'],
+  '컴파일러': ['파싱', '코드 생성'],
+  // AI영상제작 (융합연계부전공, IT 쪽 발췌)
+  '생성형 인공지능 디자인': ['생성형 AI', '이미지 생성'],
+  '디지털컨텐츠': ['디지털 콘텐츠 제작', '그래픽 툴'],
+  'AI융합디자인': ['AI 디자인', '프로토타입'],
+  '정보설계와 시각화': ['정보 구조', '데이터 시각화', 'UX'],
+  'VR 콘텐츠디자인': ['VR', '3D 콘텐츠', 'Unity'],
+  '미디어스토리텔링 프로덕션': ['영상 기획', '스토리텔링'],
+  'AI 영상 제작': ['AI 영상 생성', '영상 편집'],
+  '디지털 시네마토그라피': ['촬영', '영상 연출'],
 }
 
 const c = (
@@ -99,7 +128,14 @@ const c = (
   term: CareerCourse['term'],
   skills: SkillId[],
   dept?: string,
-): CareerCourse => ({ group, name, year, term, skills, dept, topics: TOPICS[name] ?? [] })
+  track?: TrackId,
+): CareerCourse => ({ group, name, year, term, skills, dept, track, topics: TOPICS[name] ?? [] })
+
+// 자유선택 과정 과목 (AI융합학부 과목과 이름이 같은 건 빼고, 각 학과 「학년별 교육과정」 기준)
+const ce = (name: string, year: number, term: '1학기' | '2학기', skills: SkillId[]) =>
+  c('컴공 복수전공', name, year, term, skills, '컴퓨터공학과', 'ce')
+const aiv = (name: string, term: '1학기' | '2학기', skills: SkillId[]) =>
+  c('영상 부전공', name, null, term, skills, 'AI영상제작', 'aiv')
 
 export const COURSES: CareerCourse[] = [
   c('교양필수', '파이썬 프로그래밍', 1, '1학기', ['prog']),
@@ -151,6 +187,30 @@ export const COURSES: CareerCourse[] = [
   c('트랙 과목', '모빌리티서비스', 3, '2학기', ['iot', 'service']),
   c('트랙 과목', '메타버스의 이해', 4, '1학기', ['service']),
   c('트랙 과목', 'IoT커넥티비티', 4, '2학기', ['iot', 'infra']),
+  ce('웹프로그래밍기초', 1, '1학기', ['service', 'prog']),
+  ce('파이썬 활용', 1, '2학기', ['prog']),
+  ce('컴퓨터시스템관리', 2, '1학기', ['infra']),
+  ce('고급자료구조', 2, '2학기', ['dsa']),
+  ce('운영체제', 2, '2학기', ['infra', 'sysprog']),
+  ce('시스템프로그래밍', 3, '1학기', ['sysprog', 'infra']),
+  ce('서버시스템구축실습', 3, '1학기', ['infra', 'service']),
+  ce('소프트웨어분석및설계', 3, '1학기', ['project', 'service']),
+  ce('인공지능응용', 3, '1학기', ['ml', 'dl']),
+  ce('소프트웨어공학', 3, '2학기', ['project']),
+  ce('오픈소스소프트웨어', 3, '2학기', ['project', 'prog']),
+  ce('정보보호', 3, '2학기', ['infra']),
+  ce('소프트웨어디자인패턴', 4, '1학기', ['sysprog', 'project']),
+  ce('분산시스템', 4, '1학기', ['infra']),
+  ce('클라우드컴퓨팅', 4, '1학기', ['infra']),
+  ce('컴파일러', 4, '2학기', ['sysprog']),
+  aiv('생성형 인공지능 디자인', '1학기', ['nlp', 'service']),
+  aiv('디지털컨텐츠', '1학기', ['service']),
+  aiv('AI융합디자인', '1학기', ['service', 'project']),
+  aiv('정보설계와 시각화', '1학기', ['data', 'service']),
+  aiv('VR 콘텐츠디자인', '1학기', ['cv', 'project']),
+  aiv('미디어스토리텔링 프로덕션', '2학기', ['project']),
+  aiv('AI 영상 제작', '2학기', ['cv', 'nlp']),
+  aiv('디지털 시네마토그라피', '2학기', ['cv']),
 ]
 
 export interface Job {
@@ -159,11 +219,13 @@ export interface Job {
   work: string
   core: SkillId[]
   nice: SkillId[]
-  /** 잘 맞는 자유선택 과정 */
-  freeTrack: string
   tips: string
   /** 이 직무에 특히 중요한 과목 (역량을 이미 갖췄어도 추천) */
   keyCourses: string[]
+  /** 자유선택 과정별로 이 직무에 특히 좋은 과목 */
+  trackCourses: Partial<Record<TrackId, string[]>>
+  /** 이 직무와 잘 맞는 자유선택 과정 */
+  fitTracks: TrackId[]
 }
 
 export const JOBS: Job[] = [
@@ -173,9 +235,10 @@ export const JOBS: Job[] = [
     work: '이미지·영상 인식 모델 개발, 영상 처리',
     core: ['prog', 'math', 'dl', 'cv'],
     nice: ['sysprog', 'infra'],
-    freeTrack: '전공심화 (AI영상서비스 창업 트랙 과목), AI영상제작 융합연계전공',
     tips: '객체 탐지·분할 같은 비전 프로젝트를 직접 만들어 보면 좋아요.',
     keyCourses: ['컴퓨터비전', '디지털신호처리'],
+    trackCourses: { ce: ['인공지능응용', '시스템프로그래밍'], aiv: ['AI 영상 제작', '디지털 시네마토그라피'] },
+    fitTracks: ['aiv'],
   },
   {
     id: 'robot',
@@ -183,9 +246,10 @@ export const JOBS: Job[] = [
     work: '로봇·자율이동체 인지·제어 시스템 개발',
     core: ['sysprog', 'cv', 'iot', 'math'],
     nice: ['dl', 'ml'],
-    freeTrack: '전공심화 (자율이동체 시스템, 커넥티드시스템 트랙)',
     tips: 'ROS나 소형 자율주행 키트로 만든 프로젝트가 있으면 좋아요.',
     keyCourses: ['자율이동체 시스템', '마이크로컨트롤러응용실습'],
+    trackCourses: { ce: ['시스템프로그래밍', '운영체제'] },
+    fitTracks: ['ce'],
   },
   {
     id: 'iot',
@@ -193,9 +257,10 @@ export const JOBS: Job[] = [
     work: '스마트 기기·센서 시스템 개발, IoT 서비스 연동',
     core: ['prog', 'sysprog', 'iot', 'infra'],
     nice: ['data', 'ml'],
-    freeTrack: '전공심화 (커넥티드시스템 트랙), 학부 내 지능형IoT전공 부·복수전공',
     tips: '아두이노·라즈베리파이로 직접 만든 기기 프로젝트가 있으면 좋아요.',
     keyCourses: ['IoT창의공학설계', 'IoT커넥티비티'],
+    trackCourses: { ce: ['운영체제', '시스템프로그래밍', '서버시스템구축실습'] },
+    fitTracks: ['ce'],
   },
   {
     id: 'pm',
@@ -203,9 +268,10 @@ export const JOBS: Job[] = [
     work: 'AI 기능 기획, 요구사항 정의, 개발팀 협업',
     core: ['service', 'ml', 'data', 'project'],
     nice: ['prog'],
-    freeTrack: '서비스디자인공학과 부·복수전공, AI영상제작 융합연계전공',
     tips: '서비스 기획서와 프로토타입을 포트폴리오로 준비하면 좋아요.',
     keyCourses: ['AI서비스설계', '융합캡스톤디자인'],
+    trackCourses: { ce: ['소프트웨어공학', '소프트웨어분석및설계'], aiv: ['정보설계와 시각화', '생성형 인공지능 디자인'] },
+    fitTracks: ['aiv'],
   },
   {
     id: 'app',
@@ -213,9 +279,10 @@ export const JOBS: Job[] = [
     work: '웹·모바일 화면 개발, 사용자 경험 개선',
     core: ['prog', 'service', 'project', 'dsa'],
     nice: ['sysprog', 'data'],
-    freeTrack: '서비스디자인공학과 부·복수전공, 컴퓨터공학과 부전공',
     tips: '실제로 쓸 수 있는 웹·앱을 만들어 배포해 보면 좋아요.',
     keyCourses: ['모바일프로그래밍'],
+    trackCourses: { ce: ['웹프로그래밍기초', '소프트웨어공학', '오픈소스소프트웨어'], aiv: ['정보설계와 시각화'] },
+    fitTracks: ['ce'],
   },
   {
     id: 'game',
@@ -223,9 +290,10 @@ export const JOBS: Job[] = [
     work: '게임 화면·그래픽 구현, 게임 AI, 엔진(Unity·Unreal) 개발',
     core: ['sysprog', 'math', 'dsa', 'cv'],
     nice: ['ml', 'project'],
-    freeTrack: '전공심화 (컴퓨터그래픽스·지능형게임, AI영상서비스 창업 트랙), 컴퓨터공학과 부전공',
     tips: 'Unity나 Unreal로 만든 게임을 포트폴리오로 준비하고, 게임잼에 나가 보면 좋아요. C++·C# 실력이 중요해요.',
     keyCourses: ['컴퓨터그래픽스', '지능형게임', '알고리즘'],
+    trackCourses: { ce: ['고급자료구조', '운영체제', '소프트웨어디자인패턴'], aiv: ['VR 콘텐츠디자인', '디지털컨텐츠'] },
+    fitTracks: ['ce', 'aiv'],
   },
 ]
 
