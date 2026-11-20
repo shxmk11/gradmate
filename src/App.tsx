@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Grades from './pages/Grades'
 import Graduation from './pages/Graduation'
 import Career from './pages/Career'
+import Settings from './pages/Settings'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
           <Route path="/grades" element={<Grades />} />
           <Route path="/graduation" element={<Graduation />} />
           <Route path="/career" element={<Career />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

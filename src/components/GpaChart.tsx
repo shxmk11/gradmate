@@ -33,6 +33,26 @@ function GpaChart({ data }: Props) {
 
   const hovered = hover !== null ? data[hover] : null
 
+  // 마지막 값 라벨 두 개가 겹치지 않도록 세로 위치 조정
+  const lastValues = SERIES.map((s) => {
+    for (let i = data.length - 1; i >= 0; i--) {
+      const v = data[i][s.key]
+      if (v !== null) return y(v)
+    }
+    return null
+  })
+  const labelY = [...lastValues]
+  const MIN_GAP = 14
+  if (labelY[0] !== null && labelY[1] !== null) {
+    const diff = Math.abs(labelY[0] - labelY[1])
+    if (diff < MIN_GAP) {
+      const shift = (MIN_GAP - diff) / 2
+      const upper = labelY[0] <= labelY[1] ? 0 : 1
+      labelY[upper] = labelY[upper]! - shift
+      labelY[1 - upper] = labelY[1 - upper]! + shift
+    }
+  }
+
   return (
     <div className="relative">
       <div className="mb-3 flex gap-4 text-xs text-gray-500">
@@ -104,7 +124,7 @@ function GpaChart({ data }: Props) {
           />
         )}
 
-        {SERIES.map((s) => {
+        {SERIES.map((s, si) => {
           const points = data
             .map((d, i) => ({ i, v: d[s.key] }))
             .filter((p): p is { i: number; v: number } => p.v !== null)
@@ -134,7 +154,7 @@ function GpaChart({ data }: Props) {
               {last && (
                 <text
                   x={x(last.i) + 10}
-                  y={y(last.v)}
+                  y={labelY[si] ?? y(last.v)}
                   dominantBaseline="middle"
                   className="fill-gray-600 text-[11px] font-medium"
                 >

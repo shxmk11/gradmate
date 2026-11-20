@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from 'react'
 import { CATEGORIES, db, type Category, type Grade } from '../db/database'
-import { calcSemesterGpas } from '../utils/gpa'
+import { GRADE_OPTIONS, calcSemesterGpas } from '../utils/gpa'
 
 const fieldClass =
   'block h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-normal text-gray-900 outline-none transition placeholder:text-gray-400 hover:border-gray-300 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'
@@ -192,7 +192,7 @@ function Grades() {
                 onChange={(e) => setGrade(e.target.value)}
                 className={selectClass}
               >
-                {['A+', 'A0', 'B+', 'B0', 'C+', 'C0', 'D+', 'D0', 'F', 'P'].map(
+                {GRADE_OPTIONS.map(
                   (value) => (
                     <option key={value}>{value}</option>
                   ),

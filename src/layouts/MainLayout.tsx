@@ -6,6 +6,7 @@ const menus = [
   { name: '성적 관리', path: '/grades' },
   { name: '졸업 요건', path: '/graduation' },
   { name: '진로 관리', path: '/career' },
+  { name: '설정', path: '/settings' },
 ]
 
 function MainLayout() {

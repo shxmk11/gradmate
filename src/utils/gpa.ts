@@ -1,17 +1,29 @@
 import type { Category, Grade } from '../db/database'
 
-// 4.5 만점 기준 성적별 평점
+// 성신여대 4.5 만점 평점표
+// 성적표로 확인: A+ 4.5, A0 4.2, B+ 3.6, B0 3.3, B- 3.0, C+ 2.6
+// 추정(0.3 간격 패턴, 학칙 확인 필요): A-, C0, C-, D+, D0, D-
 export const GRADE_POINTS: Record<string, number> = {
   'A+': 4.5,
-  A0: 4.0,
-  'B+': 3.5,
-  B0: 3.0,
-  'C+': 2.5,
-  C0: 2.0,
-  'D+': 1.5,
-  D0: 1.0,
+  A0: 4.2,
+  'A-': 3.9,
+  'B+': 3.6,
+  B0: 3.3,
+  'B-': 3.0,
+  'C+': 2.6,
+  C0: 2.3,
+  'C-': 2.0,
+  'D+': 1.6,
+  D0: 1.3,
+  'D-': 1.0,
   F: 0,
 }
+
+// 성적 선택지 (P는 평점 계산 제외)
+export const GRADE_OPTIONS = [...Object.keys(GRADE_POINTS), 'P']
+
+/** 성적표 백분율 = 평점평균(소수 둘째 자리 반올림) × 10 + 55 (성적표 4개 값으로 확인) */
+export const toPercentage = (gpa: number) => Math.round(gpa * 100) / 10 + 55
 
 const SEMESTER_ORDER: Record<Grade['semester'], number> = {
   '1학기': 1,

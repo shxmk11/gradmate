@@ -8,6 +8,7 @@ import {
   calcEarnedCredits,
   calcGpa,
   calcSemesterGpas,
+  toPercentage,
 } from '../utils/gpa'
 
 // 확정된 졸업 기준: 교양 33학점. 총 졸업학점은 아직 미확정.
@@ -73,7 +74,9 @@ const Dashboard = () => {
             <span className="mb-1 text-sm text-gray-400">/ 4.5</span>
           </div>
           <p className="mt-3 text-sm text-gray-500">
-            평점 반영 {gpaCredits}학점
+            {gpa !== null
+              ? `백분율 ${toPercentage(gpa).toFixed(2)} · 평점 반영 ${gpaCredits}학점`
+              : '등록된 성적이 없습니다.'}
           </p>
         </div>
 
