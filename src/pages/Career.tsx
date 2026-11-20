@@ -109,8 +109,10 @@ function Career() {
     state.plan.filter((p) => p.year === slot.year && p.semester === slot.semester)
   const selPlan = planOf(sel)
   const selAvailable = selCourses.filter((c) => !planned.has(c.course.name))
-  // 졸업 필수·직무 핵심·부족 역량·그 학년 권장 과목이면 추천, 나머지는 접어서 보여 주기
-  const isSuggested = (c: NextCourse) => c.required || c.key || c.fills.length > 0 || c.onTrack
+  // 그 학기 학년 (입학년도는 가장 이른 성적 연도로 추정)
+  const selYear = sel.year - (grades.length > 0 ? Math.min(...grades.map((g) => g.year)) : sel.year) + 1
+  // 그 학년 과목(권장 학년이 없는 부전공 과목 포함)과 아직 안 들은 졸업 필수 과목만 추천, 나머지는 접기
+  const isSuggested = (c: NextCourse) => c.required || c.onTrack || c.course.year === null
   const selSuggest = selAvailable.filter(isSuggested)
   const selOthers = selAvailable.filter((c) => !isSuggested(c))
 
@@ -433,9 +435,9 @@ function Career() {
             <section className={card}>
               <SectionTitle
                 title={`${selLabel} 추천 과목`}
-                desc={`${selLabel}에 열리는 과목 중 아직 안 들은 과목이에요. 졸업 필수 과목, ${
-                  job ? `${job.name} 핵심 과목, 부족한 역량, 권장 학년` : '권장 학년'
-                } 순서로 보여 줘요. ${freeTrack.label} 과목도 함께 추천해요.`}
+                desc={`${selLabel}에 열리는 ${selYear}학년 과목 중 아직 안 들은 과목이에요. 졸업 필수 과목, ${
+                  job ? `${job.name} 핵심 과목, 부족한 역량` : '권장 학년'
+                } 순서로 보여 줘요. ${freeTrack.label} 과목도 함께 추천하고, 다른 학년 과목은 아래 「그 외」에 있어요.`}
               />
               {!job && (
                 <p className="mt-3 text-xs text-violet-600">
