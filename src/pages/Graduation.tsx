@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { db, type PlannedCourse, type Grade } from '../db/database'
 import { calcPlannedCredits } from '../utils/career'
 import { REQUIREMENTS } from '../data/requirements'
-import { calcGpa } from '../utils/gpa'
+import { calcGpa, inProgressGrades } from '../utils/gpa'
 import {
   calcRequiredCourses,
   calcRequirementStatus,
@@ -54,6 +54,15 @@ function Graduation() {
   const missingCourses = requiredCourses.filter((c) => !c.done)
   const planned = calcPlannedCredits(plan, grades)
   const remainingWithPlan = Math.max(total.remaining - planned.total, 0)
+  const inProgress = inProgressGrades(grades)
+  const inProgressCredits = inProgress.reduce((sum, g) => sum + g.credits, 0)
+  const inProgressOf = (categories: readonly string[]) =>
+    inProgress
+      .filter((g) => g.category && categories.includes(g.category))
+      .reduce((sum, g) => sum + g.credits, 0)
+  // 영역에 들어가는 필수 과목 중 아직 안 들은 것
+  const missingRequiredOf = (categories: readonly string[]) =>
+    requiredCourses.filter((c) => !c.done && categories.includes(c.category))
   const plannedOf = (categories: readonly string[]) =>
     categories.reduce(
       (sum, c) => sum + (planned.byCategory[c as keyof typeof planned.byCategory] ?? 0),
@@ -75,6 +84,7 @@ function Graduation() {
             <h2 className="text-lg font-bold text-gray-900">전체 졸업 학점</h2>
             <p className="mt-1 text-sm text-gray-500">
               졸업까지 {total.remaining}학점 남음
+              {inProgressCredits > 0 && ` · 수강 중 ${inProgressCredits}학점 포함`}
             </p>
           </div>
           <div className="flex items-end gap-2">
@@ -101,7 +111,7 @@ function Graduation() {
             {planned.total > 0 ? (
               <>
                 <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-violet-200" />
-                수강 계획 {planned.courses.length}과목(약 {planned.total}학점)을 들으면 졸업까지{' '}
+                수강 계획 {planned.count}과목(약 {planned.total}학점)을 들으면 졸업까지{' '}
                 {remainingWithPlan}학점 남아요.
               </>
             ) : (
@@ -144,7 +154,9 @@ function Graduation() {
                     const areasOk =
                       item.minAreas === undefined ||
                       item.areas.length >= item.minAreas
-                    const done = item.remaining === 0 && areasOk
+                    const missingRequired = missingRequiredOf(item.categories)
+                    const done = item.remaining === 0 && areasOk && missingRequired.length === 0
+                    const inProgressHere = inProgressOf(item.categories)
 
                     return (
                       <div key={item.label}>
@@ -157,9 +169,14 @@ function Graduation() {
                           </div>
                           <span className="text-gray-500">
                             {item.earned} / {item.credits}학점
+                            {inProgressHere > 0 && (
+                              <span className="ml-1 text-gray-400">
+                                (수강 중 {inProgressHere} 포함)
+                              </span>
+                            )}
                             {plannedOf(item.categories) > 0 && (
                               <span className="ml-2 text-violet-500">
-                                (계획 +{plannedOf(item.categories)})
+                                (예상 +{plannedOf(item.categories)})
                               </span>
                             )}
                             {item.remaining > 0 && (
@@ -173,6 +190,16 @@ function Graduation() {
                           percent={(item.earned / item.credits) * 100}
                           planned={(plannedOf(item.categories) / item.credits) * 100}
                         />
+                        {missingRequired.length > 0 && (
+                          <p className="mt-2 text-xs text-violet-600">
+                            {item.remaining === 0
+                              ? '학점은 채웠지만 필수 과목이 남았어요: '
+                              : '남은 필수 과목: '}
+                            {missingRequired
+                              .map((c) => `${c.name}${c.inProgress ? ' (수강 중)' : ' (미이수)'}`)
+                              .join(', ')}
+                          </p>
+                        )}
                         {(item.note || item.minAreas) && (
                           <p className="mt-2 text-xs text-gray-400">
                             {item.note}
@@ -256,7 +283,10 @@ function Graduation() {
                   {course.category} · {course.note}
                 </p>
               </div>
-              <StatusBadge done={course.done} label={course.done ? '이수' : '미이수'} />
+              <StatusBadge
+                done={course.done}
+                label={course.done ? '이수' : course.inProgress ? '수강 중' : '미이수'}
+              />
             </li>
           ))}
         </ul>

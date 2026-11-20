@@ -19,6 +19,9 @@ export const GRADE_POINTS: Record<string, number> = {
   F: 0,
 }
 
+// 이번 학기 수강 중(성적 미정) 과목은 성적을 빈 문자열로 저장
+export const IN_PROGRESS = ''
+
 // 성적 선택지 (P는 평점 계산 제외)
 export const GRADE_OPTIONS = [...Object.keys(GRADE_POINTS), 'P']
 
@@ -35,8 +38,12 @@ const SEMESTER_ORDER: Record<Grade['semester'], number> = {
 // P는 평점 계산에서 제외. F는 평점 계산에 포함(0점).
 const isGpaCourse = (g: Grade) => g.grade in GRADE_POINTS
 
-// F는 취득 학점에서 제외. P는 취득 학점에 포함.
+// F는 취득 학점에서 제외. P와 수강 중(성적 미정) 과목은 학점에 포함 (평점에는 안 들어감).
 const isEarned = (g: Grade) => g.grade !== 'F'
+
+/** 이번 학기 수강 중(성적 미정) 과목 */
+export const inProgressGrades = (grades: Grade[]) =>
+  grades.filter((g) => g.grade === IN_PROGRESS)
 
 /** 평점 평균. 평점 대상 과목이 없으면 null */
 export function calcGpa(grades: Grade[]): number | null {
@@ -105,8 +112,12 @@ export function calcCreditsByCategory(
   return result
 }
 
-/** 학점을 취득한 과목만 (F 제외) */
+/** 학점을 취득했거나 수강 중인 과목 (F 제외) */
 export const earnedGrades = (grades: Grade[]) => grades.filter(isEarned)
+
+/** 성적까지 받은 과목만 (F, 수강 중 제외) */
+export const completedGrades = (grades: Grade[]) =>
+  grades.filter((g) => isEarned(g) && g.grade !== IN_PROGRESS)
 
 /**
  * 목표 평점을 맞추려면 앞으로 들을 학점에서 평균 몇 점이 필요한지.

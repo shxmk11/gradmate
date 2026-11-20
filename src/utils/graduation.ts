@@ -4,7 +4,7 @@ import {
   type CreditRequirement,
   type RequiredCourse,
 } from '../data/requirements'
-import { calcEarnedCredits, earnedGrades } from './gpa'
+import { IN_PROGRESS, calcEarnedCredits, earnedGrades } from './gpa'
 
 // 띄어쓰기, 가운뎃점 차이를 무시하고 과목명 비교
 export const normalize = (s: string) => s.replace(/[\s·・]/g, '')
@@ -31,14 +31,17 @@ export function calcRequirementStatus(
 
 export interface RequiredCourseStatus extends RequiredCourse {
   done: boolean
+  inProgress: boolean
 }
 
+/** 필수 과목 이수 여부. 수강 중이면 inProgress (아직 이수로 보지 않음) */
 export function calcRequiredCourses(grades: Grade[]): RequiredCourseStatus[] {
-  const taken = new Set(earnedGrades(grades).map((g) => normalize(g.courseName)))
-  return REQUIREMENTS.requiredCourses.map((c) => ({
-    ...c,
-    done: taken.has(normalize(c.name)),
-  }))
+  const earned = earnedGrades(grades)
+  const find = (name: string) => earned.find((g) => normalize(g.courseName) === normalize(name))
+  return REQUIREMENTS.requiredCourses.map((c) => {
+    const g = find(c.name)
+    return { ...c, done: !!g && g.grade !== IN_PROGRESS, inProgress: g?.grade === IN_PROGRESS }
+  })
 }
 
 export function calcTotalProgress(grades: Grade[]) {

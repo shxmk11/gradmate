@@ -3,17 +3,17 @@ import { useSearchParams } from 'react-router-dom'
 import { db, type CareerState, type Grade } from '../db/database'
 import { JOBS, MAJOR_SELECTION, TRACKS, skillName, type SkillId } from '../data/career'
 import { REQUIREMENTS, type CreditRequirement } from '../data/requirements'
-import { calcEarnedCredits, calcGpa, earnedGrades } from '../utils/gpa'
+import { calcEarnedCredits, calcGpa, completedGrades } from '../utils/gpa'
 import { calcRequiredCourses, calcRequirementStatus } from '../utils/graduation'
 import {
   buildCounselPrompt,
   calcSkills,
   calcTrackStatus,
   courseTiming,
-  groupPlan,
-  recommendCourses,
+  recommendNextSemester,
+  type NextCourse,
+  type SemesterSlot,
   slotLabel,
-  slotsForCourse,
   upcomingSemesters,
 } from '../utils/career'
 
@@ -23,7 +23,7 @@ const card = 'rounded-2xl border border-gray-200 bg-white p-6'
 
 const TABS = [
   { id: 'job', name: '직무·역량' },
-  { id: 'roadmap', name: '수강 로드맵' },
+  { id: 'plan', name: '수강 계획' },
   { id: 'track', name: '트랙·전공' },
   { id: 'ai', name: 'AI 상담' },
 ] as const
@@ -64,7 +64,7 @@ function SectionTitle({ title, desc }: { title: string; desc?: string }) {
 function Career() {
   const [grades, setGrades] = useState<Grade[]>([])
   const [state, setState] = useState<CareerState>(EMPTY)
-  const [slotChoice, setSlotChoice] = useState<Record<string, string>>({})
+  const [slotPick, setSlotPick] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   // 탭을 주소(?tab=)에 담아서 새로고침·뒤로가기에도 유지
   const [searchParams, setSearchParams] = useSearchParams()
@@ -85,9 +85,20 @@ function Career() {
   const job = JOBS.find((j) => j.id === state.targetJobId) ?? null
   const skills = useMemo(() => calcSkills(grades, state.manualSkills), [grades, state.manualSkills])
   const owned = (id: SkillId) => skills.find((s) => s.id === id)?.owned ?? false
-  const recommendations = job ? recommendCourses(job, skills, grades).slice(0, 8) : []
   const slots = upcomingSemesters(grades)
   const planned = new Set(state.plan.map((p) => p.courseName))
+  // 수강 계획 탭에서 보고 있는 학기 (기본은 다음 학기)
+  const sel = slots.find((s) => slotLabel(s) === slotPick) ?? slots[0]
+  const selLabel = slotLabel(sel)
+  const selCourses = recommendNextSemester(job, skills, grades, sel)
+  const planOf = (slot: SemesterSlot) =>
+    state.plan.filter((p) => p.year === slot.year && p.semester === slot.semester)
+  const selPlan = planOf(sel)
+  const selAvailable = selCourses.filter((c) => !planned.has(c.course.name))
+  // 졸업 필수·직무 핵심·부족 역량·그 학년 권장 과목이면 추천, 나머지는 접어서 보여 주기
+  const isSuggested = (c: NextCourse) => c.required || c.key || c.fills.length > 0 || c.onTrack
+  const selSuggest = selAvailable.filter(isSuggested)
+  const selOthers = selAvailable.filter((c) => !isSuggested(c))
 
   const toggleManual = (id: string) =>
     save({
@@ -105,6 +116,62 @@ function Career() {
   const removeFromPlan = (courseName: string) =>
     save({ plan: state.plan.filter((p) => p.courseName !== courseName) })
 
+  const renderCourseItem = ({ course, required, key, fills, early, onTrack }: NextCourse) => (
+    <li
+      key={course.name}
+      className="flex flex-wrap items-center justify-between gap-3 py-3.5 text-sm"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <p className="mr-1 font-medium text-gray-900">{course.name}</p>
+          {required && (
+            <span className="rounded-full bg-violet-600 px-2 py-0.5 text-xs font-medium text-white">
+              졸업 필수
+            </span>
+          )}
+          {key && (
+            <span className="rounded-full border border-violet-200 px-2 py-0.5 text-xs font-medium text-violet-600">
+              직무 핵심 과목
+            </span>
+          )}
+          {onTrack && (
+            <span className="rounded-full border border-gray-200 px-2 py-0.5 text-xs text-gray-500">
+              {course.year}학년 권장
+            </span>
+          )}
+          {fills.map((id) => (
+            <span
+              key={id}
+              className="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
+            >
+              + {skillName(id)}
+            </span>
+          ))}
+        </div>
+        <p className="mt-1 text-xs text-gray-400">
+          {course.group} · {courseTiming(course)}
+          {early && ' · 권장 학년보다 일러요'}
+        </p>
+        {course.topics.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {course.topics.map((t) => (
+              <span key={t} className="rounded-md bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">
+                #{t}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={() => addToPlan(course.name, selLabel)}
+        className="h-9 shrink-0 rounded-lg bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700"
+      >
+        담기
+      </button>
+    </li>
+  )
+
   const prompt = buildCounselPrompt({
     job,
     skills,
@@ -120,7 +187,7 @@ function Career() {
       .filter((c) => !c.done)
       .map((c) => c.name),
     plan: state.plan,
-    courseNames: earnedGrades(grades).map((g) => g.courseName),
+    courseNames: completedGrades(grades).map((g) => g.courseName),
   })
 
   const copyPrompt = async () => {
@@ -280,112 +347,99 @@ function Career() {
           </div>
         )}
 
-        {tab === 'roadmap' && (
+        {tab === 'plan' && (
           <div className="space-y-8">
-            {/* 로드맵 */}
+            <div className="flex flex-wrap gap-2">
+              {slots.map((slot) => {
+                const label = slotLabel(slot)
+                const count = planOf(slot).length
+                const active = label === selLabel
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setSlotPick(label)}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition ${
+                      active
+                        ? 'border-violet-400 bg-violet-50 text-violet-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {label}
+                    {slot === slots[0] && <span className="ml-1 text-xs text-gray-400">다음 학기</span>}
+                    {count > 0 && <span className="ml-1.5 text-xs text-violet-500">{count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+
             <section className={card}>
-              <SectionTitle
-                title="추천 과목"
-                desc={
-                  job
-                    ? `${job.name}에 꼭 필요한 과목과 부족한 역량을 채워 주는 과목이에요.`
-                    : '희망 직무를 고르면 추천 과목이 나와요.'
-                }
-              />
-              {job && recommendations.length === 0 && (
-                <p className="mt-5 text-sm text-gray-500">필요한 역량을 모두 갖췄어요.</p>
-              )}
-              {recommendations.length > 0 && (
-                <ul className="mt-5 divide-y divide-gray-100">
-                  {recommendations.map(({ course, fills, key }) => {
-                    const options = slotsForCourse(course, slots)
-                    const choice = slotChoice[course.name] ?? (options[0] ? slotLabel(options[0]) : '')
-                    const isPlanned = planned.has(course.name)
-                    return (
-                      <li
-                        key={course.name}
-                        className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <SectionTitle
+                  title={`${selLabel}에 담은 과목`}
+                  desc="아래 추천에서 담은 과목이에요. 위에서 학기를 바꾸면 그 학기 계획을 볼 수 있어요."
+                />
+                <span className="text-sm text-gray-500">
+                  {selPlan.length}과목 · 약{' '}
+                  <span className="font-bold text-violet-700">{selPlan.length * 3}학점</span>
+                </span>
+              </div>
+              {selPlan.length === 0 ? (
+                <p className="mt-5 text-sm text-gray-400">아직 담은 과목이 없어요.</p>
+              ) : (
+                <ul className="mt-5 flex flex-wrap gap-2">
+                  {selPlan.map((p) => (
+                    <li
+                      key={p.courseName}
+                      className="flex items-center gap-2 rounded-full bg-violet-50 py-1.5 pr-2 pl-3.5 text-sm text-violet-700"
+                    >
+                      {p.courseName}
+                      <button
+                        type="button"
+                        onClick={() => removeFromPlan(p.courseName)}
+                        className="rounded-full px-1.5 text-xs text-violet-400 hover:bg-violet-100 hover:text-violet-700"
+                        aria-label={`${p.courseName} 빼기`}
                       >
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900">{course.name}</p>
-                          <p className="mt-0.5 text-xs text-gray-400">
-                            {course.dept ? `${course.dept} (타 학과)` : course.group} · {courseTiming(course)}
-                          </p>
-                          <div className="mt-1.5 flex flex-wrap gap-1.5">
-                            {key && (
-                              <span className="rounded-full border border-violet-200 px-2.5 py-0.5 text-xs font-medium text-violet-600">
-                                직무 핵심 과목
-                              </span>
-                            )}
-                            {fills.map((id) => (
-                              <SkillChip key={id} id={id} owned={false} />
-                            ))}
-                          </div>
-                        </div>
-                        {isPlanned ? (
-                          <span className="text-xs font-medium text-violet-600">계획에 담음</span>
-                        ) : options.length === 0 ? (
-                          <span className="text-xs text-gray-400">남은 학기에 개설 없음</span>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={choice}
-                              onChange={(e) =>
-                                setSlotChoice({ ...slotChoice, [course.name]: e.target.value })
-                              }
-                              className="h-9 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700"
-                            >
-                              {options.map((s) => (
-                                <option key={slotLabel(s)}>{slotLabel(s)}</option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={() => addToPlan(course.name, choice)}
-                              className="h-9 rounded-lg bg-violet-600 px-3 text-xs font-medium text-white hover:bg-violet-700"
-                            >
-                              계획에 담기
-                            </button>
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
+                        ✕
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               )}
             </section>
 
-            {/* 학기별 계획 */}
             <section className={card}>
-              <SectionTitle title="학기별 수강 계획" desc="추천 과목에서 담은 과목이에요." />
-              {state.plan.length === 0 ? (
-                <p className="mt-5 text-sm text-gray-400">아직 담은 과목이 없어요.</p>
-              ) : (
-                <div className="mt-5 space-y-4">
-                  {groupPlan(state.plan).map(({ slot, courses }) => (
-                    <div key={slotLabel(slot)}>
-                      <p className="mb-2 text-sm font-bold text-gray-900">{slotLabel(slot)}</p>
-                      <ul className="space-y-1.5">
-                        {courses.map((name) => (
-                          <li
-                            key={name}
-                            className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm"
-                          >
-                            <span className="text-gray-700">{name}</span>
-                            <button
-                              type="button"
-                              onClick={() => removeFromPlan(name)}
-                              className="text-xs text-gray-400 hover:text-gray-600"
-                            >
-                              빼기
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
-                </div>
+              <SectionTitle
+                title={`${selLabel} 추천 과목`}
+                desc={`${selLabel}에 열리는 과목 중 아직 안 들은 과목이에요. 졸업 필수 과목, ${
+                  job ? `${job.name} 핵심 과목, 부족한 역량, 권장 학년` : '권장 학년'
+                } 순서로 보여 줘요.`}
+              />
+              {!job && (
+                <p className="mt-3 text-xs text-violet-600">
+                  직무·역량 탭에서 희망 직무를 고르면 직무에 맞춰 추천해요.
+                </p>
               )}
+              {selSuggest.length === 0 ? (
+                <p className="mt-5 text-sm text-gray-400">추천할 과목이 없어요.</p>
+              ) : (
+                <ul className="mt-5 divide-y divide-gray-100">
+                  {selSuggest.map(renderCourseItem)}
+                </ul>
+              )}
+              {selOthers.length > 0 && (
+                <details className="mt-4 rounded-xl bg-gray-50 px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-medium text-gray-600">
+                    그 외 {selLabel}에 열리는 과목 ({selOthers.length})
+                  </summary>
+                  <ul className="mt-2 divide-y divide-gray-100">
+                    {selOthers.map(renderCourseItem)}
+                  </ul>
+                </details>
+              )}
+              <p className="mt-4 text-xs text-gray-400">
+                개설 학기는 학부 홈페이지 「학년별 교육과정」·로드맵 기준이에요. 실제 개설 여부와 시간표는 수강편람에서 확인해 주세요.
+              </p>
             </section>
           </div>
         )}

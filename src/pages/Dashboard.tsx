@@ -1,13 +1,12 @@
 
 import { useEffect, useState } from 'react'
 import GpaChart from '../components/GpaChart'
-import CareerSummary from '../components/CareerSummary'
-import { CATEGORIES, db, type CareerState, type Grade } from '../db/database'
+import { db, type Grade } from '../db/database'
 import { REQUIREMENTS } from '../data/requirements'
 import { calcRequirementStatus, calcTotalProgress } from '../utils/graduation'
 import {
   GRADE_POINTS,
-  calcCreditsByCategory,
+  IN_PROGRESS,
   calcEarnedCredits,
   calcGpa,
   calcSemesterGpas,
@@ -16,11 +15,9 @@ import {
 
 const Dashboard = () => {
   const [grades, setGrades] = useState<Grade[]>([])
-  const [career, setCareer] = useState<CareerState | null>(null)
 
   useEffect(() => {
     db.grades.toArray().then(setGrades)
-    db.career.get('career').then((saved) => setCareer(saved ?? null))
   }, [])
 
   const gpa = calcGpa(grades)
@@ -28,8 +25,11 @@ const Dashboard = () => {
     .filter((g) => g.grade in GRADE_POINTS)
     .reduce((sum, g) => sum + g.credits, 0)
   const earnedCredits = calcEarnedCredits(grades)
-  const semesterGpas = calcSemesterGpas(grades)
-  const byCategory = calcCreditsByCategory(grades)
+  const inProgressCredits = grades
+    .filter((g) => g.grade === IN_PROGRESS)
+    .reduce((sum, g) => sum + g.credits, 0)
+  // 수강 중(성적 미정) 과목만 있는 학기는 그래프에서 제외
+  const semesterGpas = calcSemesterGpas(grades.filter((g) => g.grade !== IN_PROGRESS))
 
   const total = calcTotalProgress(grades)
 
@@ -45,14 +45,6 @@ const Dashboard = () => {
       percent: Math.min((earned / required) * 100, 100),
     }
   })
-
-  // 기준이 있는 영역은 항상, 나머지(일반선택, 미분류)는 학점이 있을 때만 표시
-  const requiredCategories = new Set<string>(
-    REQUIREMENTS.groups.flatMap((g) => g.items.flatMap((i) => i.categories)),
-  )
-  const creditCategories = [...CATEGORIES, '미분류' as const]
-    .filter((name) => requiredCategories.has(name) || byCategory[name] > 0)
-    .map((name) => ({ name, credits: byCategory[name] }))
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">
@@ -102,6 +94,7 @@ const Dashboard = () => {
           </div>
           <p className="mt-3 text-sm text-gray-500">
             졸업까지 {total.remaining}학점 남음
+            {inProgressCredits > 0 && ` · 수강 중 ${inProgressCredits}학점 포함`}
           </p>
         </div>
       </section>
@@ -183,42 +176,6 @@ const Dashboard = () => {
                 <div
                   className="h-full rounded-full bg-violet-500 transition-all"
                   style={{ width: `${group.percent}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Career */}
-      <CareerSummary grades={grades} career={career} />
-
-      {/* Credit Categories */}
-      <section className="rounded-2xl border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-bold text-gray-900">
-          영역별 취득 학점
-        </h2>
-        <p className="mt-1 text-sm text-gray-500">
-          지금까지 취득한 학점의 영역별 현황
-        </p>
-
-        <div className="mt-6 space-y-5">
-          {creditCategories.map((category) => (
-            <div key={category.name}>
-              <div className="mb-2 flex justify-between text-sm">
-                <span className="font-medium text-gray-700">
-                  {category.name}
-                </span>
-                <span className="text-gray-500">
-                  {category.credits}학점
-                </span>
-              </div>
-              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
-                <div
-                  className="h-full rounded-full bg-violet-500"
-                  style={{
-                    width: `${earnedCredits > 0 ? (category.credits / earnedCredits) * 100 : 0}%`,
-                  }}
                 />
               </div>
             </div>

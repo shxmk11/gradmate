@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { CATEGORIES, db, type Category, type Grade } from '../db/database'
 import { AREA_OPTIONS } from '../data/requirements'
-import { GRADE_OPTIONS, calcSemesterGpas } from '../utils/gpa'
+import { GRADE_OPTIONS, IN_PROGRESS, calcSemesterGpas } from '../utils/gpa'
 import GpaGoal from '../components/GpaGoal'
 
 const fieldClass =
@@ -35,7 +35,6 @@ function Grades() {
   const [grade, setGrade] = useState('A+')
   const [category, setCategory] = useState<Category>('공통교양')
   const [area, setArea] = useState('')
-  const [editingId, setEditingId] = useState<number | null>(null)
   const areaOptions = AREA_OPTIONS[category] ?? []
 
   const loadGrades = async () => {
@@ -62,35 +61,18 @@ function Grades() {
       area: areaOptions.length > 0 && area ? area : undefined,
     }
 
-    if (editingId !== null) {
-      await db.grades.update(editingId, data)
-      setEditingId(null)
-    } else {
-      await db.grades.add(data)
-    }
+    await db.grades.add(data)
 
     setCourseName('')
     setArea('')
     await loadGrades()
   }
 
-  const handleEdit = (item: Grade) => {
-    if (item.id === undefined) return
-    setEditingId(item.id)
-    setYear(item.year)
-    setSemester(item.semester)
-    setCourseName(item.courseName)
-    setCredits(item.credits)
-    setGrade(item.grade)
-    setCategory(item.category ?? '공통교양')
-    setArea(item.area ?? '')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  const handleCancelEdit = () => {
-    setEditingId(null)
-    setCourseName('')
-    setArea('')
+  // 수강 중(성적 비움) 과목에 나중에 성적 입력
+  const handleGradeInput = async (id: number | undefined, value: string) => {
+    if (id === undefined || !value) return
+    await db.grades.update(id, { grade: value })
+    await loadGrades()
   }
 
   // 최근 학기가 위로 오도록 정렬
@@ -108,7 +90,7 @@ function Grades() {
 
       <section className="rounded-2xl border border-gray-200 bg-white p-6">
         <h2 className="mb-5 text-lg font-bold">
-          {editingId !== null ? '과목 수정' : '과목 등록'}
+          과목 등록
         </h2>
 
         <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
@@ -224,6 +206,7 @@ function Grades() {
                 onChange={(e) => setGrade(e.target.value)}
                 className={selectClass}
               >
+                <option value={IN_PROGRESS}>미정 (수강 중)</option>
                 {GRADE_OPTIONS.map(
                   (value) => (
                     <option key={value}>{value}</option>
@@ -239,17 +222,8 @@ function Grades() {
               type="submit"
               className="flex-1 h-11 rounded-lg bg-violet-600 px-5 text-sm font-medium text-white transition hover:bg-violet-700"
             >
-              {editingId !== null ? '수정 완료' : '과목 등록'}
+              과목 등록
             </button>
-            {editingId !== null && (
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="h-11 rounded-lg border border-gray-200 px-5 text-sm font-medium text-gray-600 transition hover:bg-gray-100"
-              >
-                취소
-              </button>
-            )}
           </div>
         </form>
       </section>
@@ -304,17 +278,11 @@ function Grades() {
                           <th className="p-3">과목명</th>
                           <th className="p-3">학점</th>
                           <th className="p-3">성적</th>
-                          <th className="p-3">관리</th>
                         </tr>
                       </thead>
                       <tbody>
                         {items.map((item) => (
-                          <tr
-                            key={item.id}
-                            className={`border-b border-gray-100 ${
-                              item.id === editingId ? 'bg-violet-50' : ''
-                            }`}
-                          >
+                          <tr key={item.id} className="border-b border-gray-100">
                             <td className="p-3 whitespace-nowrap">
                               {item.category ?? (
                                 <span className="text-gray-400">미분류</span>
@@ -327,14 +295,23 @@ function Grades() {
                             </td>
                             <td className="p-3">{item.courseName}</td>
                             <td className="p-3">{item.credits}</td>
-                            <td className="p-3 font-medium">{item.grade}</td>
-                            <td className="p-3 whitespace-nowrap">
-                              <button
-                                onClick={() => handleEdit(item)}
-                                className="text-gray-500 hover:text-gray-900"
-                              >
-                                수정
-                              </button>
+                            <td className="p-3 font-medium">
+                              {item.grade === IN_PROGRESS ? (
+                                <select
+                                  value=""
+                                  onChange={(e) => handleGradeInput(item.id, e.target.value)}
+                                  className="h-8 cursor-pointer rounded-lg border border-violet-200 bg-violet-50 px-2 text-xs font-medium text-violet-700"
+                                >
+                                  <option value="" disabled>
+                                    수강 중 · 성적 입력
+                                  </option>
+                                  {GRADE_OPTIONS.map((value) => (
+                                    <option key={value}>{value}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                item.grade
+                              )}
                             </td>
                           </tr>
                         ))}

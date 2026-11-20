@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { CATEGORIES, db, type Grade } from '../db/database'
-import { GRADE_OPTIONS } from '../utils/gpa'
+import { GRADE_OPTIONS, IN_PROGRESS } from '../utils/gpa'
 
 const SEMESTERS: Grade['semester'][] = ['1학기', '2학기', '여름학기', '겨울학기']
 
@@ -13,7 +13,12 @@ function toGrade(raw: unknown): Grade | null {
   if (!SEMESTERS.includes(r.semester as Grade['semester'])) return null
   if (typeof r.courseName !== 'string' || !r.courseName.trim()) return null
   if (typeof r.credits !== 'number' || r.credits < 0) return null
-  if (typeof r.grade !== 'string' || !GRADE_OPTIONS.includes(r.grade)) return null
+  if (
+    typeof r.grade !== 'string' ||
+    (r.grade !== IN_PROGRESS && !GRADE_OPTIONS.includes(r.grade))
+  ) {
+    return null
+  }
   if (
     r.category !== undefined &&
     !CATEGORIES.includes(r.category as Grade['category'] & string)

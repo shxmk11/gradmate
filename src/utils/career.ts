@@ -8,12 +8,12 @@ import {
   type SkillId,
   type Track,
 } from '../data/career'
-import { earnedGrades } from './gpa'
-import { normalize } from './graduation'
+import { completedGrades, inProgressGrades } from './gpa'
+import { calcRequiredCourses, normalize } from './graduation'
 
-/** 학점을 취득한 과목명 (정규화) */
+/** 성적까지 받은 과목명 (정규화). 수강 중 과목은 역량·트랙 계산에서 빼요 */
 export const takenCourseNames = (grades: Grade[]) =>
-  new Set(earnedGrades(grades).map((g) => normalize(g.courseName)))
+  new Set(completedGrades(grades).map((g) => normalize(g.courseName)))
 
 export interface SkillStatus {
   id: SkillId
@@ -55,7 +55,9 @@ export function recommendCourses(
   const owned = new Set(skills.filter((s) => s.owned).map((s) => s.id))
   const missingCore = job.core.filter((id) => !owned.has(id))
   const missingNice = job.nice.filter((id) => !owned.has(id))
+  // 이미 들었거나 이번 학기에 듣고 있는 과목은 추천에서 제외
   const taken = takenCourseNames(grades)
+  for (const g of inProgressGrades(grades)) taken.add(normalize(g.courseName))
 
   return COURSES.filter((course) => !taken.has(normalize(course.name)))
     .map((course) => {
@@ -232,16 +234,91 @@ const GROUP_CATEGORY: Record<string, Category> = {
   '4영역': '심화전공',
 }
 
-/** 아직 안 들은 계획 과목의 예상 학점 (과목당 3학점으로 가정) */
+/**
+ * 진로 탭 수강 계획 과목의 예상 학점 (과목당 3학점으로 가정).
+ * 이미 들었거나 수강 중인 과목은 빼요 (수강 중 과목은 이미 취득 학점에 들어가 있음).
+ */
 export function calcPlannedCredits(plan: PlannedCourse[], grades: Grade[]) {
   const taken = takenCourseNames(grades)
-  const courses = plan
+  for (const g of inProgressGrades(grades)) taken.add(normalize(g.courseName))
+
+  const planned = plan
     .filter((p) => !taken.has(normalize(p.courseName)))
     .map((p) => {
       const course = COURSES.find((c) => normalize(c.name) === normalize(p.courseName))
       return { name: p.courseName, credits: 3, category: course ? GROUP_CATEGORY[course.group] : undefined }
     })
+
   const byCategory: Partial<Record<Category, number>> = {}
-  for (const c of courses) if (c.category) byCategory[c.category] = (byCategory[c.category] ?? 0) + c.credits
-  return { courses, total: courses.reduce((sum, c) => sum + c.credits, 0), byCategory }
+  for (const c of planned)
+    if (c.category) byCategory[c.category] = (byCategory[c.category] ?? 0) + c.credits
+  return {
+    count: planned.length,
+    total: planned.reduce((s, c) => s + c.credits, 0),
+    byCategory,
+  }
+}
+
+export interface NextCourse {
+  course: CareerCourse
+  /** 졸업 필수 과목인데 아직 안 들음 */
+  required: boolean
+  /** 희망 직무 핵심 과목 */
+  key: boolean
+  /** 채워 주는 부족 역량 */
+  fills: SkillId[]
+  /** 권장 학년보다 이르게 듣는 과목 */
+  early: boolean
+  /** 그 학기 학년에 권장되는 과목 */
+  onTrack: boolean
+  score: number
+}
+
+/**
+ * 다음 학기에 열리는 과목 중 아직 안 듣고, 수강 중도 아닌 과목을 추천 순으로.
+ * 졸업 필수 > 직무 핵심 과목 > 부족 역량 > 권장 학년 순으로 점수를 매겨요.
+ */
+export function recommendNextSemester(
+  job: Job | null,
+  skills: SkillStatus[],
+  grades: Grade[],
+  slot: SemesterSlot,
+): NextCourse[] {
+  const taken = takenCourseNames(grades)
+  for (const g of inProgressGrades(grades)) taken.add(normalize(g.courseName))
+  const missingRequired = new Set(
+    calcRequiredCourses(grades)
+      .filter((c) => !c.done && !c.inProgress)
+      .map((c) => normalize(c.name)),
+  )
+  const owned = new Set(skills.filter((s) => s.owned).map((s) => s.id))
+  const admission = grades.length > 0 ? Math.min(...grades.map((g) => g.year)) : slot.year
+  const studentYear = slot.year - admission + 1
+
+  return COURSES.filter(
+    (c) =>
+      (c.term === slot.semester || c.term === '매학기') &&
+      !taken.has(normalize(c.name)),
+  )
+    .map((course) => {
+      const required = missingRequired.has(normalize(course.name))
+      const key = !!job?.keyCourses.includes(course.name)
+      const fills = job
+        ? course.skills.filter(
+            (s) => !owned.has(s) && (job.core.includes(s) || job.nice.includes(s)),
+          )
+        : []
+      const coreFills = fills.filter((s) => job?.core.includes(s)).length
+      const early = course.year !== null && course.year > studentYear
+      const onTrack = course.year === studentYear
+      const score =
+        (required ? 10 : 0) +
+        (key ? 4 : 0) +
+        coreFills * 2 +
+        (fills.length - coreFills) +
+        (onTrack ? 1 : 0) -
+        (early ? 2 : 0)
+      return { course, required, key, fills, early, onTrack, score }
+    })
+    .sort((a, b) => b.score - a.score || (a.course.year ?? 9) - (b.course.year ?? 9))
 }
